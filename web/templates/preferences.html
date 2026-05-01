@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid two">
+  <div class="card">
+    <h1>用户偏好</h1>
+    <pre>{{ preferences | tojson(indent=2) }}</pre>
+  </div>
+  <div class="card">
+    <h2>最近交互</h2>
+    <pre>{{ interactions | tojson(indent=2) }}</pre>
+  </div>
+</div>
+{% endblock %}

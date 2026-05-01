@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>本地投资研究助手</h1>
+  <p class="muted">当前模型：<span class="pill">{{ model }}</span></p>
+  <p>这个版本已经改成 Gemini 路径，适合先在本地和云端作为 Flask Web 服务部署。</p>
+</section>
+<section class="grid two" style="margin-top:16px">
+  <div class="card">
+    <h2>组合概览</h2>
+    {% if portfolio %}
+      <pre>{{ portfolio | tojson(indent=2) }}</pre>
+    {% else %}
+      <p class="muted">还没有组合 Playbook。</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>股票列表</h2>
+    {% if stocks %}
+      <table>
+        <tr><th>名称</th><th>代码</th><th>最近研究</th></tr>
+        {% for stock in stocks %}
+          <tr>
+            <td><a href="/stock/{{ stock.stock_id }}">{{ stock.stock_name }}</a></td>
+            <td>{{ stock.ticker }}</td>
+            <td>{{ stock.last_research.date[:10] if stock.last_research else "暂无" }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    {% else %}
+      <p class="muted">还没有股票。</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

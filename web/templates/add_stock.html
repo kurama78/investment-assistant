@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>新增股票</h1>
+  <p>这个页面当前提供 API 接入入口，适合先配合 `POST /api/interview/start` 和 `POST /api/interview/continue` 使用。</p>
+  <pre>{
+  "type": "stock",
+  "stock_name": "NVDA"
+}</pre>
+</div>
+{% endblock %}

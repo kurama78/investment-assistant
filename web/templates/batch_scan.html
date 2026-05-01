@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>批量扫描</h1>
+  {% if stocks %}
+    <table>
+      <tr><th>股票</th><th>代码</th><th>说明</th></tr>
+      {% for stock in stocks %}
+        <tr>
+          <td>{{ stock.stock_name }}</td>
+          <td>{{ stock.ticker }}</td>
+          <td>可调用 `/api/batch-scan/stock/{{ stock.stock_id }}` 触发扫描。</td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="muted">暂无股票。</p>
+  {% endif %}
+</div>
+{% endblock %}

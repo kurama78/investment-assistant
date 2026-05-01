@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>研究历史</h1>
+  {% if history %}
+    <table>
+      <tr><th>日期</th><th>股票</th><th>建议</th></tr>
+      {% for item in history %}
+        <tr>
+          <td>{{ item.date[:10] }}</td>
+          <td>{{ item.stock_name }}</td>
+          <td>{{ item.research_result.recommendation if item.research_result else "未完成" }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="muted">暂无记录。</p>
+  {% endif %}
+</div>
+{% endblock %}

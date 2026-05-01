@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>股票列表</h1>
+  {% if stocks %}
+    <table>
+      <tr><th>名称</th><th>代码</th><th>摘要</th><th>更新时间</th></tr>
+      {% for stock in stocks %}
+        <tr>
+          <td><a href="/stock/{{ stock.stock_id }}">{{ stock.stock_name }}</a></td>
+          <td>{{ stock.ticker }}</td>
+          <td>{{ stock.summary }}</td>
+          <td>{{ stock.updated_at[:10] if stock.updated_at else "" }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="muted">暂无股票。</p>
+  {% endif %}
+</div>
+{% endblock %}

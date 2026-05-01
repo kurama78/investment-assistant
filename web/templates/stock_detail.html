@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid two">
+  <div class="card">
+    <h1>{{ playbook.stock_name if playbook else stock_id }}</h1>
+    {% if playbook %}
+      <pre>{{ playbook | tojson(indent=2) }}</pre>
+    {% else %}
+      <p class="muted">暂无 Playbook。</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>研究历史</h2>
+    {% if history %}
+      {% for item in history %}
+        <div style="padding:12px 0;border-bottom:1px solid var(--line)">
+          <strong>{{ item.date[:10] }}</strong>
+          <div class="muted">{{ item.research_result.recommendation if item.research_result else "未完成研究" }}</div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">暂无研究记录。</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
