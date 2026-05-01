@@ -1,6 +1,7 @@
 """Gemini client shim.
 
-Kept as ``openai_client.py`` to stay compatible with the original imports.
+Kept as ``openai_client.py`` so the rest of the upstream code can run
+without changing its imports while we use Gemini on both local and Render.
 """
 
 from __future__ import annotations

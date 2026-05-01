@@ -1,26 +1,1606 @@
 {% extends "base.html" %}
+
+{% block title %}{{ playbook.stock_name if playbook else '股票详情' }} - 投资研究助手{% endblock %}
+
 {% block content %}
-<div class="grid two">
-  <div class="card">
-    <h1>{{ playbook.stock_name if playbook else stock_id }}</h1>
-    {% if playbook %}
-      <pre>{{ playbook | tojson(indent=2) }}</pre>
-    {% else %}
-      <p class="muted">暂无 Playbook。</p>
-    {% endif %}
-  </div>
-  <div class="card">
-    <h2>研究历史</h2>
-    {% if history %}
-      {% for item in history %}
-        <div style="padding:12px 0;border-bottom:1px solid var(--line)">
-          <strong>{{ item.date[:10] }}</strong>
-          <div class="muted">{{ item.research_result.recommendation if item.research_result else "未完成研究" }}</div>
+<div x-data="stockDetail()" class="space-y-6">
+    <!-- 返回链接 -->
+    <a href="/stocks" class="inline-flex items-center text-gray-500 hover:text-gray-700 text-sm">
+        ← 返回股票列表
+    </a>
+
+    <!-- 页面标题 -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ playbook.stock_name if playbook else '股票详情' }}</h1>
+            {% if playbook and playbook.ticker %}
+            <p class="text-gray-500">{{ playbook.ticker }}</p>
+            {% endif %}
         </div>
-      {% endfor %}
-    {% else %}
-      <p class="muted">暂无研究记录。</p>
-    {% endif %}
-  </div>
+        <div class="flex space-x-3">
+            <button @click="openResearchModal()"
+                class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                发起深度研究
+            </button>
+            <button @click="editMode = !editMode"
+                class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">
+                <span x-text="editMode ? '取消' : '编辑 Playbook'"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Playbook 信息 -->
+    <div x-show="!editMode" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- 左侧：核心信息 -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- 核心论点 -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">核心论点</h2>
+                {% if playbook and playbook.core_thesis %}
+                <div class="space-y-4">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">一句话总结</p>
+                        <p class="text-lg text-gray-900">{{ playbook.core_thesis.summary }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-gray-500 mb-2">关键要点</p>
+                        <div class="space-y-2">
+                            {% for point in playbook.core_thesis.key_points %}
+                            <div class="flex items-start space-x-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span class="text-gray-700">{{ point }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% if playbook.core_thesis.market_gap %}
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">市场认知差</p>
+                        <p class="text-gray-900">{{ playbook.core_thesis.market_gap }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 验证与失效 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">✅ 验证信号</h2>
+                    {% if playbook and playbook.validation_signals %}
+                    <ul class="space-y-2">
+                        {% for signal in playbook.validation_signals %}
+                        <li class="flex items-start space-x-2">
+                            <span class="text-green-500 mt-1">✓</span>
+                            <span class="text-gray-700">{{ signal }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">⚠️ 失效条件</h2>
+                    {% if playbook and playbook.invalidation_triggers %}
+                    <ul class="space-y-2">
+                        {% for trigger in playbook.invalidation_triggers %}
+                        <li class="flex items-start space-x-2">
+                            <span class="text-red-500 mt-1">✗</span>
+                            <span class="text-gray-700">{{ trigger }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 研究历史 -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">研究历史</h2>
+                {% if history %}
+                <div class="space-y-4">
+                    {% for h in history %}
+                    <div class="border rounded-lg overflow-hidden {% if h.is_milestone %}border-amber-300 bg-amber-50/30{% else %}border-gray-200{% endif %}"
+                         x-data="{ isMilestone: {{ 'true' if h.is_milestone else 'false' }} }">
+                        <div class="p-4 hover:bg-gray-50 cursor-pointer"
+                             @click="expandedHistory = expandedHistory === {{ loop.index }} ? null : {{ loop.index }}">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <!-- 里程碑标记 -->
+                                    <div class="relative text-center min-w-[50px]">
+                                        <p class="text-lg font-bold text-gray-900">{{ h.date[8:10] if h.date else '--' }}</p>
+                                        <p class="text-xs text-gray-500">{{ h.date[5:7] if h.date else '' }}月</p>
+                                        <span x-show="isMilestone" class="absolute -top-1 -right-1 text-amber-500 text-sm" title="里程碑">&#9733;</span>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center space-x-2">
+                                            {% if h.research_result %}
+                                            <span class="px-2 py-0.5 text-sm rounded-full
+                                                {% if h.research_result.recommendation in ['买入', '增持'] %}bg-green-100 text-green-700
+                                                {% elif h.research_result.recommendation in ['卖出', '减持'] %}bg-red-100 text-red-700
+                                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                                {{ h.research_result.recommendation }}
+                                            </span>
+                                            <span class="text-sm text-gray-500">({{ h.research_result.confidence }})</span>
+                                            {% endif %}
+                                            <!-- 里程碑徽章 -->
+                                            <span x-show="isMilestone" class="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700">
+                                                里程碑
+                                            </span>
+                                        </div>
+                                        {% if h.research_result and h.research_result.key_finding %}
+                                        <p class="text-sm text-gray-600 mt-1">{{ h.research_result.key_finding }}</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-3">
+                                    <!-- 里程碑切换按钮 -->
+                                    <button @click.stop="
+                                        fetch('/api/research/{{ stock_id }}/milestone/{{ h.id }}', { method: 'POST' })
+                                            .then(r => r.json())
+                                            .then(d => { isMilestone = d.is_milestone; })
+                                    " class="p-1.5 rounded-full hover:bg-gray-200 transition"
+                                       :class="isMilestone ? 'text-amber-500' : 'text-gray-400'"
+                                       :title="isMilestone ? '取消里程碑' : '标记为里程碑'">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                                        </svg>
+                                    </button>
+                                    <!-- 用户反馈标记 -->
+                                    {% if h.user_feedback %}
+                                    <span class="px-2 py-1 text-xs rounded-full
+                                        {% if h.user_feedback.decision == '买入' %}bg-green-100 text-green-700
+                                        {% elif h.user_feedback.decision == '卖出' %}bg-red-100 text-red-700
+                                        {% else %}bg-blue-100 text-blue-700{% endif %}">
+                                        我的决策: {{ h.user_feedback.decision }}
+                                    </span>
+                                    {% endif %}
+                                    <span class="text-gray-400">{{ '▼' if expandedHistory == loop.index else '▶' }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 展开内容 -->
+                        <div x-show="expandedHistory === {{ loop.index }}" x-collapse class="border-t border-gray-200 bg-gray-50 p-4">
+                            {% if h.user_feedback %}
+                            <div class="mb-4 p-3 bg-blue-50 rounded-lg">
+                                <p class="text-sm font-medium text-blue-900 mb-2">📝 我的反馈</p>
+                                <div class="text-sm text-blue-800 space-y-1">
+                                    <p><strong>决策:</strong> {{ h.user_feedback.decision }}</p>
+                                    {% if h.user_feedback.direction_correct %}
+                                    <p><strong>研究评价:</strong> {{ h.user_feedback.direction_correct }}</p>
+                                    {% endif %}
+                                    {% if h.user_feedback.tracking_metrics %}
+                                    <p><strong>跟踪指标:</strong> {{ h.user_feedback.tracking_metrics | join(', ') }}</p>
+                                    {% endif %}
+                                    {% if h.user_feedback.next_direction %}
+                                    <p><strong>后续方向:</strong> {{ h.user_feedback.next_direction }}</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endif %}
+                            {% if h.full_report %}
+                            <div class="prose prose-sm max-w-none text-gray-700 max-h-96 overflow-y-auto"
+                                 x-html="marked.parse(`{{ h.full_report|replace('`', '\\`')|replace('\n', '\\n')|replace('\r', '') }}`)"></div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-gray-500">暂无研究历史</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 右侧：相关信息 -->
+        <div class="space-y-6">
+            <!-- 相关实体 -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">相关实体</h2>
+                {% if playbook and playbook.related_entities %}
+                <div class="flex flex-wrap gap-2">
+                    {% for entity in playbook.related_entities %}
+                    <span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">{{ entity }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 持续跟踪指标 -->
+            {% if playbook and playbook.tracking_metrics %}
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">📊 持续跟踪指标</h2>
+                <ul class="space-y-2">
+                    {% for metric in playbook.tracking_metrics %}
+                    <li class="flex items-center space-x-2 text-sm">
+                        <span class="text-blue-500">•</span>
+                        <span class="text-gray-700">{{ metric }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <!-- 操作计划 -->
+            {% if playbook and playbook.operation_plan %}
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">操作计划</h2>
+                <div class="space-y-3 text-sm">
+                    {% if playbook.operation_plan.holding_period %}
+                    <div class="flex justify-between">
+                        <span class="text-gray-500">持有周期</span>
+                        <span class="text-gray-900">{{ playbook.operation_plan.holding_period }}</span>
+                    </div>
+                    {% endif %}
+                    {% if playbook.operation_plan.position_size %}
+                    <div class="flex justify-between">
+                        <span class="text-gray-500">仓位比例</span>
+                        <span class="text-gray-900">{{ playbook.operation_plan.position_size }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 编辑模式 -->
+    <div x-show="editMode" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">编辑 Playbook</h2>
+        <textarea x-model="jsonContent"
+            class="w-full h-96 p-4 font-mono text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+        <div class="flex justify-end space-x-3 mt-4">
+            <button @click="editMode = false" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">取消</button>
+            <button @click="savePlaybook()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">保存</button>
+        </div>
+    </div>
+
+    <!-- ==================== 深度研究弹窗 ==================== -->
+    <div x-show="researchModal" class="fixed inset-0 z-50 overflow-y-auto" x-cloak>
+        <div class="flex items-center justify-center min-h-screen px-4 py-8">
+            <div class="fixed inset-0 bg-black opacity-50" @click="closeResearchModal()"></div>
+            <div class="relative bg-white rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                <!-- 头部 -->
+                <div class="p-6 border-b border-gray-200 flex-shrink-0">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-900">深度研究: {{ playbook.stock_name if playbook else '' }}</h2>
+                            <p class="text-gray-500 text-sm mt-1" x-text="stepDescriptions[currentStep]"></p>
+                        </div>
+                        <button @click="closeResearchModal()" class="text-gray-400 hover:text-gray-600">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- 步骤指示器 -->
+                    <div class="flex items-center space-x-2 mt-4">
+                        <template x-for="(step, index) in steps" :key="index">
+                            <div class="flex items-center">
+                                <div class="flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium"
+                                     :class="currentStep > index ? 'bg-green-500 text-white' :
+                                             currentStep === index ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'">
+                                    <span x-show="currentStep <= index" x-text="index + 1"></span>
+                                    <span x-show="currentStep > index">✓</span>
+                                </div>
+                                <span class="ml-2 text-sm" :class="currentStep >= index ? 'text-gray-900' : 'text-gray-400'" x-text="step"></span>
+                                <div x-show="index < steps.length - 1" class="w-8 h-px bg-gray-300 mx-2"></div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- 内容区域 -->
+                <div class="flex-1 overflow-y-auto p-6">
+                    <!-- 加载状态 -->
+                    <div x-show="loading" class="flex items-center justify-center h-64">
+                        <div class="text-center">
+                            <div class="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+                            <p class="text-gray-600" x-text="loadingText"></p>
+                        </div>
+                    </div>
+
+                    <!-- Step 1: 设置参数 -->
+                    <div x-show="!loading && currentStep === 0" class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- 时间范围 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Environment 搜索时间范围</label>
+                                <div class="flex space-x-2">
+                                    <select x-model="daysPreset" @change="if(daysPreset !== 'custom') days = daysPreset"
+                                        class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                        <option value="3">过去 3 天</option>
+                                        <option value="7">过去 7 天</option>
+                                        <option value="14">过去 14 天</option>
+                                        <option value="30">过去 30 天</option>
+                                        <option value="custom">自定义</option>
+                                    </select>
+                                    <div x-show="daysPreset === 'custom'" class="flex items-center space-x-2">
+                                        <input type="number" x-model="days" min="1" max="365"
+                                            class="w-20 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                            placeholder="天数">
+                                        <span class="text-gray-500">天</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 文件上传 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">上传额外文件 (可选)</label>
+                                <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-500 transition cursor-pointer"
+                                     @click="$refs.fileInput.click()">
+                                    <input type="file" x-ref="fileInput" @change="handleFileUpload($event)" class="hidden" multiple accept=".pdf,.txt,.md,.png,.jpg,.jpeg">
+                                    <p class="text-gray-500 text-sm">点击上传研报、新闻截图等</p>
+                                    <p class="text-gray-400 text-xs mt-1">支持 PDF、TXT、MD、图片</p>
+                                </div>
+                                <div x-show="uploadedFiles.length > 0" class="mt-2 space-y-1">
+                                    <template x-for="(file, index) in uploadedFiles" :key="index">
+                                        <div class="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                                            <span x-text="file.name"></span>
+                                            <button @click="removeFile(index)" class="text-red-500 hover:text-red-600">×</button>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 之前的研究上下文 -->
+                        {% if history %}
+                        <div class="p-4 bg-yellow-50 rounded-lg">
+                            <p class="text-sm font-medium text-yellow-800 mb-2">📚 之前的研究上下文</p>
+                            <p class="text-sm text-yellow-700">
+                                系统将参考之前 {{ history|length }} 次研究的结果和你的反馈，确保研究方向的连续性。
+                            </p>
+                            {% if history[0].user_feedback %}
+                            <div class="mt-2 p-2 bg-white rounded text-sm">
+                                <p class="text-gray-600">上次反馈: {{ history[0].user_feedback.feedback_on_research or '无' }}</p>
+                                <p class="text-gray-600">上次决策: {{ history[0].user_feedback.final_decision or '无' }}</p>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        <button @click="collectEnvironment()" class="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+                            开始采集 Environment
+                        </button>
+                    </div>
+
+                    <!-- Step 2: 展示采集结果 + 评估 -->
+                    <div x-show="!loading && currentStep === 1" class="space-y-6">
+                        <!-- 因果逻辑 1: 为什么这个内容值得进行 Deep Research？ -->
+                        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                            <h3 class="font-medium text-amber-900 mb-3">💡 Step 1 因果逻辑：为什么这些内容值得关注？</h3>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex items-start space-x-2">
+                                    <span class="text-amber-600 font-bold">→</span>
+                                    <p class="text-gray-700">
+                                        在过去 <strong x-text="days"></strong> 天内，通过<strong>6个维度</strong>的多层次搜索，
+                                        采集到 <strong x-text="news.length"></strong> 条与 <strong>{{ playbook.stock_name if playbook else '该股票' }}</strong> 相关的市场动态。
+                                    </p>
+                                </div>
+                                <div class="flex items-start space-x-2">
+                                    <span class="text-amber-600 font-bold">→</span>
+                                    <p class="text-gray-700">
+                                        其中高重要性事件 <strong x-text="news.filter(n => n.importance === '高').length"></strong> 条，
+                                        中重要性 <strong x-text="news.filter(n => n.importance === '中').length"></strong> 条。
+                                    </p>
+                                </div>
+                                <div x-show="uploadedFilesAnalysis.length > 0" class="flex items-start space-x-2">
+                                    <span class="text-amber-600 font-bold">→</span>
+                                    <p class="text-gray-700">
+                                        你还上传了 <strong x-text="uploadedFilesAnalysis.length"></strong> 份额外资料，这些将纳入评估范围。
+                                    </p>
+                                </div>
+                                <div class="mt-3 p-2 bg-amber-100 rounded text-amber-800">
+                                    <strong>下一步：</strong>点击"进行三维度评估"，系统将分析这些变化与你的投资逻辑（Playbook）和历史研究的关联，判断是否需要深度研究。
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 搜索警告 -->
+                        <template x-if="searchMetadata && searchMetadata.search_warnings && searchMetadata.search_warnings.length > 0">
+                            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                                <div class="flex items-start space-x-2">
+                                    <span class="text-yellow-600 text-lg">&#9888;</span>
+                                    <div>
+                                        <p class="font-medium text-yellow-800">部分搜索维度不可用</p>
+                                        <p class="text-sm text-yellow-700 mt-1">以下搜索维度失败，结果可能不完整：</p>
+                                        <ul class="text-sm text-yellow-600 mt-2 space-y-1">
+                                            <template x-for="warning in searchMetadata.search_warnings" :key="warning">
+                                                <li class="flex items-center space-x-1">
+                                                    <span>•</span>
+                                                    <span x-text="warning"></span>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                        <p class="text-xs text-yellow-600 mt-2">
+                                            成功 <span x-text="searchMetadata.successful_dimensions"></span>/<span x-text="searchMetadata.total_dimensions"></span> 个维度
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- 采集到的新闻 -->
+                        <div class="bg-white border border-gray-200 rounded-lg p-4">
+                            <h3 class="font-medium text-gray-900 mb-3">📰 采集到 <span x-text="news.length"></span> 条市场动态（多维度搜索）</h3>
+
+                            <!-- 维度统计 -->
+                            <div class="flex flex-wrap gap-2 mb-3">
+                                <template x-for="dim in [...new Set(news.map(n => n.dimension).filter(Boolean))]" :key="dim">
+                                    <span class="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700"
+                                          x-text="dim + ' (' + news.filter(n => n.dimension === dim).length + ')'"></span>
+                                </template>
+                            </div>
+
+                            <div class="max-h-64 overflow-y-auto space-y-2">
+                                <template x-for="(item, index) in news" :key="index">
+                                    <div class="flex items-start space-x-3 p-2 bg-gray-50 rounded">
+                                        <div class="flex flex-col items-center space-y-1 flex-shrink-0">
+                                            <span class="px-2 py-0.5 text-xs rounded-full"
+                                                  :class="item.importance === '高' ? 'bg-red-100 text-red-700' :
+                                                          item.importance === '中' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'"
+                                                  x-text="item.importance"></span>
+                                            <span class="text-xs text-gray-400" x-text="item.dimension || ''"></span>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm text-gray-900" x-text="item.title"></p>
+                                            <p class="text-xs text-gray-600 mt-1" x-text="item.summary || ''"></p>
+                                            <p class="text-xs text-gray-400 mt-1" x-text="item.date"></p>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- 上传文件的分析结果 -->
+                        <div x-show="uploadedFilesAnalysis.length > 0" class="bg-white border border-gray-200 rounded-lg p-4">
+                            <h3 class="font-medium text-gray-900 mb-3">📎 上传文件分析 (<span x-text="uploadedFilesAnalysis.length"></span> 个)</h3>
+                            <div class="space-y-3">
+                                <template x-for="(file, index) in uploadedFilesAnalysis" :key="index">
+                                    <div class="p-3 bg-blue-50 rounded-lg">
+                                        <p class="font-medium text-gray-900 text-sm" x-text="file.filename"></p>
+                                        <p class="text-sm text-gray-700 mt-1" x-text="file.summary"></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <button @click="assessImpact()" class="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+                            进行三维度评估
+                        </button>
+                    </div>
+
+                    <!-- Step 3: 展示评估结果 + 研究计划 -->
+                    <div x-show="!loading && currentStep === 2" class="space-y-6">
+                        <!-- 因果逻辑 2: 为什么选择这种方式进行 Deep Research？ -->
+                        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                            <h3 class="font-medium text-amber-900 mb-3">💡 Step 2 因果逻辑：为什么要做这个研究？为什么这样做？</h3>
+
+                            <!-- 因果链条 -->
+                            <div class="space-y-4 text-sm">
+                                <!-- 原因1: 环境变化 -->
+                                <div class="p-3 bg-white rounded-lg border-l-4 border-blue-400">
+                                    <p class="font-medium text-blue-800 mb-2">📊 原因一：环境发生了什么变化？</p>
+                                    <div class="space-y-1">
+                                        <template x-for="(s, i) in (assessment?.dimension_analysis?.environment_signals?.signal_vs_noise || []).filter(x => x.classification === '信号').slice(0, 3)" :key="i">
+                                            <p class="text-gray-700 flex items-start">
+                                                <span class="text-blue-500 mr-2">•</span>
+                                                <span><strong x-text="s.event"></strong> — <span class="text-gray-500" x-text="s.reasoning"></span></span>
+                                            </p>
+                                        </template>
+                                        <p x-show="(assessment?.dimension_analysis?.environment_signals?.signal_vs_noise || []).filter(x => x.classification === '信号').length === 0"
+                                           class="text-gray-500">暂无明显的重要信号</p>
+                                    </div>
+                                </div>
+
+                                <!-- 原因2: 与投资逻辑的关联 -->
+                                <div class="p-3 bg-white rounded-lg border-l-4 border-purple-400">
+                                    <p class="font-medium text-purple-800 mb-2">🎯 原因二：这些变化与你的投资逻辑有什么关系？</p>
+                                    <div class="space-y-2">
+                                        <p class="text-gray-700">
+                                            <strong>论点影响：</strong>
+                                            <span class="px-2 py-0.5 rounded-full text-xs"
+                                                  :class="{
+                                                      'bg-green-100 text-green-700': assessment?.dimension_analysis?.thesis_impact?.core_thesis_status === '强化',
+                                                      'bg-red-100 text-red-700': assessment?.dimension_analysis?.thesis_impact?.core_thesis_status === '动摇',
+                                                      'bg-yellow-100 text-yellow-700': assessment?.dimension_analysis?.thesis_impact?.core_thesis_status === '削弱',
+                                                      'bg-gray-100 text-gray-700': true
+                                                  }"
+                                                  x-text="assessment?.dimension_analysis?.thesis_impact?.core_thesis_status || '无明显影响'"></span>
+                                        </p>
+                                        <template x-if="assessment?.dimension_analysis?.thesis_impact?.key_points_affected?.length > 0">
+                                            <div class="pl-4 space-y-1">
+                                                <template x-for="(p, i) in assessment?.dimension_analysis?.thesis_impact?.key_points_affected?.slice(0, 2)" :key="i">
+                                                    <p class="text-gray-600">
+                                                        → <strong x-text="p.point"></strong>: <span x-text="p.impact"></span>
+                                                        <span class="text-xs px-1 rounded" :class="p.severity === '高' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'" x-text="'(' + p.severity + ')'"></span>
+                                                    </p>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- 原因3: 与历史研究的连续性 -->
+                                <div class="p-3 bg-white rounded-lg border-l-4 border-green-400">
+                                    <p class="font-medium text-green-800 mb-2">📚 原因三：与之前的研究有什么联系？</p>
+                                    <p class="text-gray-700" x-text="assessment?.dimension_analysis?.historical_context?.last_research_conclusion || '这是首次研究，暂无历史上下文'"></p>
+                                    <template x-if="assessment?.dimension_analysis?.historical_context?.new_developments_on_followups?.length > 0">
+                                        <div class="mt-2 pl-4">
+                                            <p class="text-xs text-gray-500 mb-1">之前待跟进事项的新进展：</p>
+                                            <template x-for="(d, i) in assessment?.dimension_analysis?.historical_context?.new_developments_on_followups?.slice(0, 2)" :key="i">
+                                                <p class="text-green-700" x-text="'✓ ' + d"></p>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <!-- 结论 -->
+                                <div class="p-3 bg-amber-100 rounded-lg">
+                                    <p class="font-medium text-amber-800">
+                                        <span x-show="assessment?.judgment?.needs_deep_research">✅ 综上所述，建议进行深度研究</span>
+                                        <span x-show="!assessment?.judgment?.needs_deep_research">⏸️ 综上所述，暂时不需要深度研究</span>
+                                    </p>
+                                    <p class="text-amber-700 mt-1" x-text="assessment?.conclusion?.summary || ''"></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 是否需要研究 -->
+                        <div class="p-4 rounded-lg" :class="assessment?.judgment?.needs_deep_research ? 'bg-green-50' : 'bg-gray-50'">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-3xl" x-text="assessment?.judgment?.needs_deep_research ? '✅' : '⏸️'"></span>
+                                <div>
+                                    <h3 class="font-bold text-lg" x-text="assessment?.judgment?.needs_deep_research ? '建议进行深度研究' : '暂不需要深度研究'"></h3>
+                                    <p class="text-gray-600" x-text="assessment?.conclusion?.summary || ''"></p>
+                                </div>
+                            </div>
+                            <div class="mt-2 flex items-center space-x-4 text-sm">
+                                <span class="text-gray-500">信心: <strong x-text="assessment?.judgment?.confidence || '—'"></strong></span>
+                                <span class="text-gray-500">紧迫性: <strong x-text="assessment?.judgment?.urgency || '—'"></strong></span>
+                            </div>
+                        </div>
+
+                        <!-- 三维度分析详情 -->
+                        <div class="bg-white border border-gray-200 rounded-lg p-4">
+                            <h3 class="font-medium text-gray-900 mb-3 flex items-center justify-between">
+                                <span>📊 三维度分析</span>
+                                <button @click="showDimensionDetail = !showDimensionDetail" class="text-blue-600 text-sm">
+                                    <span x-text="showDimensionDetail ? '收起' : '展开详情'"></span>
+                                </button>
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                <div class="p-3 bg-gray-50 rounded-lg">
+                                    <p class="font-medium text-gray-700 mb-1">历史研究</p>
+                                    <p class="text-gray-600" x-text="assessment?.dimension_analysis?.historical_context?.last_research_conclusion || '暂无历史'"></p>
+                                </div>
+                                <div class="p-3 bg-gray-50 rounded-lg">
+                                    <p class="font-medium text-gray-700 mb-1">论点影响</p>
+                                    <p class="font-semibold" :class="{
+                                        'text-green-600': assessment?.dimension_analysis?.thesis_impact?.core_thesis_status === '强化',
+                                        'text-red-600': assessment?.dimension_analysis?.thesis_impact?.core_thesis_status === '动摇',
+                                        'text-yellow-600': assessment?.dimension_analysis?.thesis_impact?.core_thesis_status === '削弱',
+                                        'text-gray-600': true
+                                    }" x-text="assessment?.dimension_analysis?.thesis_impact?.core_thesis_status || '—'"></p>
+                                </div>
+                                <div class="p-3 bg-gray-50 rounded-lg">
+                                    <p class="font-medium text-gray-700 mb-1">市场预期差</p>
+                                    <p class="text-gray-600" x-text="assessment?.dimension_analysis?.environment_signals?.market_expectation_gap || '—'"></p>
+                                </div>
+                            </div>
+                            <!-- 展开的详情 -->
+                            <div x-show="showDimensionDetail" x-collapse class="mt-4 space-y-4">
+                                <!-- 信号 vs 噪音 -->
+                                <div x-show="assessment?.dimension_analysis?.environment_signals?.signal_vs_noise?.length > 0">
+                                    <p class="font-medium text-gray-700 mb-2">信号 vs 噪音</p>
+                                    <div class="space-y-2">
+                                        <template x-for="(s, i) in assessment?.dimension_analysis?.environment_signals?.signal_vs_noise || []" :key="i">
+                                            <div class="flex items-start space-x-2 p-2 bg-gray-50 rounded">
+                                                <span class="px-2 py-0.5 text-xs rounded-full flex-shrink-0"
+                                                      :class="s.classification === '信号' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'"
+                                                      x-text="s.classification"></span>
+                                                <div>
+                                                    <p class="text-gray-900 text-sm" x-text="s.event"></p>
+                                                    <p class="text-gray-500 text-xs" x-text="s.reasoning"></p>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                                <!-- 一阶/二阶效应 -->
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p class="font-medium text-gray-700 mb-1">一阶效应</p>
+                                        <ul class="text-sm text-gray-600 space-y-1">
+                                            <template x-for="(e, i) in assessment?.dimension_analysis?.environment_signals?.first_order_effects || []" :key="i">
+                                                <li class="flex items-start"><span class="text-blue-500 mr-1">•</span><span x-text="e"></span></li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                    <div>
+                                        <p class="font-medium text-gray-700 mb-1">二阶效应</p>
+                                        <ul class="text-sm text-gray-600 space-y-1">
+                                            <template x-for="(e, i) in assessment?.dimension_analysis?.environment_signals?.second_order_effects || []" :key="i">
+                                                <li class="flex items-start"><span class="text-purple-500 mr-1">•</span><span x-text="e"></span></li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 关键风险/机会 -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="p-4 bg-red-50 border border-red-100 rounded-lg">
+                                <p class="text-sm font-medium text-red-700 mb-1">⚠️ 关键风险</p>
+                                <p class="text-red-900" x-text="assessment?.conclusion?.key_risk || '—'"></p>
+                            </div>
+                            <div class="p-4 bg-green-50 border border-green-100 rounded-lg">
+                                <p class="text-sm font-medium text-green-700 mb-1">🎯 关键机会</p>
+                                <p class="text-green-900" x-text="assessment?.conclusion?.key_opportunity || '—'"></p>
+                            </div>
+                        </div>
+
+                        <!-- 研究计划详情 -->
+                        <div x-show="assessment?.research_plan" class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                            <div class="p-4 bg-blue-50 border-b border-blue-100">
+                                <h3 class="font-medium text-blue-900">📋 研究计划</h3>
+                                <p class="text-sm text-blue-700 mt-1" x-text="assessment?.research_plan?.research_objective || ''"></p>
+                            </div>
+                            <div class="p-4 space-y-4">
+                                <!-- 待验证假设 -->
+                                <div x-show="assessment?.research_plan?.hypothesis_to_test?.length > 0">
+                                    <p class="font-medium text-gray-700 mb-2">🔬 待验证假设</p>
+                                    <div class="space-y-3">
+                                        <template x-for="(h, i) in assessment?.research_plan?.hypothesis_to_test || []" :key="i">
+                                            <div class="p-3 bg-gray-50 rounded-lg border-l-4 border-blue-400">
+                                                <p class="font-medium text-gray-900" x-text="h.hypothesis"></p>
+                                                <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
+                                                    <div class="text-green-700">
+                                                        <span class="font-medium">若为真:</span>
+                                                        <span x-text="h.if_true_implication"></span>
+                                                    </div>
+                                                    <div class="text-red-700">
+                                                        <span class="font-medium">若为假:</span>
+                                                        <span x-text="h.if_false_implication"></span>
+                                                    </div>
+                                                </div>
+                                                <p class="mt-1 text-sm text-gray-500">
+                                                    <span class="font-medium">验证方法:</span>
+                                                    <span x-text="h.how_to_verify"></span>
+                                                </p>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- 研究模块 -->
+                                <div x-show="assessment?.research_plan?.research_modules?.length > 0">
+                                    <p class="font-medium text-gray-700 mb-2">📚 研究模块</p>
+                                    <div class="space-y-3">
+                                        <template x-for="(m, i) in assessment?.research_plan?.research_modules || []" :key="i">
+                                            <div class="p-3 bg-gray-50 rounded-lg">
+                                                <div class="flex items-center justify-between">
+                                                    <p class="font-medium text-gray-900" x-text="m.module_name"></p>
+                                                    <span class="text-xs text-gray-500" x-text="m.analysis_framework"></span>
+                                                </div>
+                                                <div class="mt-2 text-sm">
+                                                    <p class="text-gray-600 mb-1"><strong>关键问题:</strong></p>
+                                                    <ul class="ml-4 space-y-1">
+                                                        <template x-for="(q, j) in m.key_questions || []" :key="j">
+                                                            <li class="text-gray-700" x-text="'• ' + q"></li>
+                                                        </template>
+                                                    </ul>
+                                                </div>
+                                                <div class="mt-2 flex flex-wrap gap-1">
+                                                    <template x-for="(s, j) in m.search_queries || []" :key="j">
+                                                        <span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs" x-text="s"></span>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- 情景分析 -->
+                                <div x-show="assessment?.research_plan?.scenario_analysis">
+                                    <p class="font-medium text-gray-700 mb-2">📈 情景分析</p>
+                                    <div class="grid grid-cols-3 gap-2 text-sm">
+                                        <div class="p-2 bg-green-50 rounded">
+                                            <p class="font-medium text-green-700">乐观</p>
+                                            <p class="text-green-600 text-xs" x-text="assessment?.research_plan?.scenario_analysis?.bull_case || '—'"></p>
+                                        </div>
+                                        <div class="p-2 bg-gray-50 rounded">
+                                            <p class="font-medium text-gray-700">基准</p>
+                                            <p class="text-gray-600 text-xs" x-text="assessment?.research_plan?.scenario_analysis?.base_case || '—'"></p>
+                                        </div>
+                                        <div class="p-2 bg-red-50 rounded">
+                                            <p class="font-medium text-red-700">悲观</p>
+                                            <p class="text-red-600 text-xs" x-text="assessment?.research_plan?.scenario_analysis?.bear_case || '—'"></p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 决策框架 -->
+                                <div x-show="assessment?.research_plan?.decision_framework">
+                                    <p class="font-medium text-gray-700 mb-2">🎯 决策框架</p>
+                                    <div class="text-sm space-y-1 p-3 bg-yellow-50 rounded-lg">
+                                        <p><strong class="text-green-700">支持论点 →</strong> <span class="text-gray-700" x-text="assessment?.research_plan?.decision_framework?.if_research_confirms_thesis"></span></p>
+                                        <p><strong class="text-yellow-700">削弱论点 →</strong> <span class="text-gray-700" x-text="assessment?.research_plan?.decision_framework?.if_research_weakens_thesis"></span></p>
+                                        <p><strong class="text-red-700">否定论点 →</strong> <span class="text-gray-700" x-text="assessment?.research_plan?.decision_framework?.if_research_invalidates_thesis"></span></p>
+                                    </div>
+                                </div>
+
+                                <!-- 优先级 -->
+                                <div x-show="assessment?.research_plan?.priority_ranking?.length > 0">
+                                    <p class="font-medium text-gray-700 mb-2">📌 研究优先级</p>
+                                    <ol class="text-sm space-y-1">
+                                        <template x-for="(p, i) in assessment?.research_plan?.priority_ranking || []" :key="i">
+                                            <li class="flex items-center space-x-2">
+                                                <span class="w-5 h-5 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center" x-text="i + 1"></span>
+                                                <span class="text-gray-700" x-text="p"></span>
+                                            </li>
+                                        </template>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 互动式修改研究计划 -->
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                            <h4 class="font-medium text-yellow-800 mb-2">💬 调整研究计划</h4>
+                            <p class="text-sm text-yellow-700 mb-3">如果你对研究计划有调整意见，请在下方描述，我会帮你修改：</p>
+                            <div class="flex space-x-2">
+                                <textarea x-model="planAdjustment"
+                                    class="flex-1 p-3 border border-yellow-300 rounded-lg focus:ring-2 focus:ring-yellow-500 bg-white resize-none"
+                                    placeholder="例如：增加对竞争对手的分析、重点关注财务数据、加入技术路线验证...（支持多行，Ctrl+Enter 发送）"
+                                    rows="2"
+                                    @keydown.ctrl.enter="adjustPlan()"
+                                    @keydown.meta.enter="adjustPlan()"></textarea>
+                                <button @click="adjustPlan()"
+                                    :disabled="!planAdjustment.trim()"
+                                    class="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50 self-end">
+                                    调整计划
+                                </button>
+                            </div>
+                            <!-- 调整历史 -->
+                            <div x-show="planAdjustmentHistory.length > 0" class="mt-3 space-y-2">
+                                <template x-for="(adj, i) in planAdjustmentHistory" :key="i">
+                                    <div class="text-sm p-2 bg-white rounded border border-yellow-200">
+                                        <p class="text-yellow-800"><strong>你的意见:</strong> <span x-text="adj.request"></span></p>
+                                        <p class="text-green-700 mt-1"><strong>已调整:</strong> <span x-text="adj.response"></span></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <div class="flex space-x-3">
+                            <button @click="currentStep = 0" class="flex-1 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">
+                                返回修改参数
+                            </button>
+                            <button @click="executeResearch()"
+                                class="flex-1 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                                ✓ 确认计划，执行研究
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Step 4: 研究结果 -->
+                    <div x-show="!loading && currentStep === 3" class="space-y-6">
+                        <!-- 因果逻辑 3: 为什么会得出这样的 Deep Research 结果？ -->
+                        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                            <h3 class="font-medium text-amber-900 mb-3">💡 Step 3 因果逻辑：为什么会得出这个研究结论？</h3>
+
+                            <div class="space-y-4 text-sm">
+                                <!-- 研究输入 -->
+                                <div class="p-3 bg-white rounded-lg border-l-4 border-blue-400">
+                                    <p class="font-medium text-blue-800 mb-2">📥 研究输入：我们研究了什么？</p>
+                                    <div class="space-y-1">
+                                        <p class="text-gray-700">
+                                            <span class="text-blue-500 mr-2">•</span>
+                                            <strong>研究目标：</strong>
+                                            <span x-text="assessment?.research_plan?.research_objective || '深入分析该股票的投资价值'"></span>
+                                        </p>
+                                        <p class="text-gray-700">
+                                            <span class="text-blue-500 mr-2">•</span>
+                                            <strong>研究模块：</strong>
+                                            <span x-text="(assessment?.research_plan?.research_modules || []).map(m => m.module_name).join('、') || '综合分析'"></span>
+                                        </p>
+                                        <p class="text-gray-700">
+                                            <span class="text-blue-500 mr-2">•</span>
+                                            <strong>数据范围：</strong>
+                                            过去 <span x-text="days"></span> 天内的 <span x-text="news.length"></span> 条市场动态
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <!-- 关键发现 -->
+                                <div class="p-3 bg-white rounded-lg border-l-4 border-purple-400">
+                                    <p class="font-medium text-purple-800 mb-2">🔍 关键发现：研究发现了什么？</p>
+                                    <template x-if="researchResult?.key_findings && researchResult?.key_findings.length > 0">
+                                        <div class="space-y-1">
+                                            <template x-for="(finding, i) in researchResult?.key_findings?.slice(0, 3) || []" :key="i">
+                                                <p class="text-gray-700">
+                                                    <span class="text-purple-500 mr-2">→</span>
+                                                    <span x-text="finding"></span>
+                                                </p>
+                                            </template>
+                                        </div>
+                                    </template>
+                                    <template x-if="!researchResult?.key_findings || researchResult?.key_findings.length === 0">
+                                        <p class="text-gray-600" x-text="researchResult?.conclusion?.key_finding || '详见完整研究报告'"></p>
+                                    </template>
+                                </div>
+
+                                <!-- 假设验证 -->
+                                <div x-show="assessment?.research_plan?.hypothesis_to_test?.length > 0" class="p-3 bg-white rounded-lg border-l-4 border-green-400">
+                                    <p class="font-medium text-green-800 mb-2">🧪 假设验证：之前的假设验证结果如何？</p>
+                                    <div class="space-y-2">
+                                        <template x-for="(h, i) in assessment?.research_plan?.hypothesis_to_test?.slice(0, 2) || []" :key="i">
+                                            <div class="text-gray-700">
+                                                <p><span class="text-green-500 mr-2">•</span><strong>假设：</strong><span x-text="h.hypothesis"></span></p>
+                                                <p class="pl-5 text-gray-500 text-xs">（验证方法：<span x-text="h.how_to_verify"></span>）</p>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- 推理链条 -->
+                                <div class="p-3 bg-white rounded-lg border-l-4 border-orange-400">
+                                    <p class="font-medium text-orange-800 mb-2">🔗 推理链条：如何得出结论？</p>
+                                    <div class="space-y-2">
+                                        <div class="flex items-start">
+                                            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs flex items-center justify-center mr-2">1</span>
+                                            <p class="text-gray-700">
+                                                <strong>环境变化：</strong>
+                                                <span x-text="(assessment?.dimension_analysis?.environment_signals?.signal_vs_noise || []).filter(x => x.classification === '信号').slice(0, 2).map(s => s.event).join('；') || '市场出现新的变化'"></span>
+                                            </p>
+                                        </div>
+                                        <div class="flex items-start">
+                                            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-xs flex items-center justify-center mr-2">2</span>
+                                            <p class="text-gray-700">
+                                                <strong>论点影响：</strong>
+                                                这些变化对核心论点的影响是「<span class="font-medium" x-text="assessment?.dimension_analysis?.thesis_impact?.core_thesis_status || '待评估'"></span>」
+                                            </p>
+                                        </div>
+                                        <div class="flex items-start">
+                                            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-green-100 text-green-700 text-xs flex items-center justify-center mr-2">3</span>
+                                            <p class="text-gray-700">
+                                                <strong>风险/机会：</strong>
+                                                主要风险是「<span x-text="assessment?.conclusion?.key_risk || '无明显风险'"></span>」，
+                                                主要机会是「<span x-text="assessment?.conclusion?.key_opportunity || '无明显机会'"></span>」
+                                            </p>
+                                        </div>
+                                        <div class="flex items-start">
+                                            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-orange-100 text-orange-700 text-xs flex items-center justify-center mr-2">4</span>
+                                            <p class="text-gray-700">
+                                                <strong>综合判断：</strong>
+                                                <span x-text="researchResult?.conclusion?.reasoning || '基于以上分析得出结论'"></span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 结论 -->
+                                <div class="p-3 bg-amber-100 rounded-lg">
+                                    <p class="text-amber-800">
+                                        <strong>因此，AI 建议：</strong>
+                                        <span class="font-bold text-lg" x-text="researchResult?.conclusion?.recommendation || '—'"></span>
+                                        （信心：<span x-text="researchResult?.conclusion?.confidence || '—'"></span>）
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ========== 30 秒摘要卡片 ========== -->
+                        <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl shadow-lg text-white p-5">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="flex items-center space-x-2 mb-3">
+                                        <span class="text-xl">&#9889;</span>
+                                        <h3 class="text-lg font-bold">30 秒摘要</h3>
+                                    </div>
+
+                                    <div class="space-y-3">
+                                        <!-- 核心变化 -->
+                                        <div class="flex items-start space-x-3">
+                                            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs">1</span>
+                                            <div>
+                                                <p class="text-white/70 text-xs mb-0.5">核心变化</p>
+                                                <p class="font-medium" x-text="researchResult?.conclusion?.key_finding || assessment?.conclusion?.summary || '—'"></p>
+                                            </div>
+                                        </div>
+
+                                        <!-- 论点影响 -->
+                                        <div class="flex items-start space-x-3">
+                                            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs">2</span>
+                                            <div>
+                                                <p class="text-white/70 text-xs mb-0.5">论点影响</p>
+                                                <p class="font-medium">
+                                                    <span class="px-2 py-0.5 rounded-full text-xs"
+                                                          :class="{
+                                                              'bg-green-400/30': researchResult?.conclusion?.thesis_impact === '强化',
+                                                              'bg-red-400/30': researchResult?.conclusion?.thesis_impact === '动摇',
+                                                              'bg-yellow-400/30': researchResult?.conclusion?.thesis_impact === '削弱',
+                                                              'bg-white/20': true
+                                                          }"
+                                                          x-text="researchResult?.conclusion?.thesis_impact || assessment?.dimension_analysis?.thesis_impact?.core_thesis_status || '无明显影响'"></span>
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <!-- 建议操作 -->
+                                        <div class="flex items-start space-x-3">
+                                            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs">3</span>
+                                            <div>
+                                                <p class="text-white/70 text-xs mb-0.5">建议操作</p>
+                                                <p class="font-bold text-xl" x-text="researchResult?.conclusion?.recommendation || '—'"></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 信心指标 -->
+                                <div class="flex-shrink-0 text-center px-6 py-3 bg-white/10 rounded-lg ml-4">
+                                    <p class="text-white/70 text-xs mb-1">信心</p>
+                                    <p class="text-3xl font-bold" x-text="researchResult?.conclusion?.confidence || '—'"></p>
+                                </div>
+                            </div>
+
+                            <!-- 应用的偏好规则 -->
+                            <div x-data="{ appliedPrefs: [] }"
+                                 x-init="fetch('/api/preferences').then(r => r.json()).then(d => appliedPrefs = (d.preferences || []).filter(p => p.active).slice(0, 3))"
+                                 x-show="appliedPrefs.length > 0"
+                                 class="mt-4 pt-4 border-t border-white/20">
+                                <div class="flex items-start space-x-2">
+                                    <span class="text-sm">&#128161;</span>
+                                    <div class="flex-1">
+                                        <p class="text-white/70 text-xs mb-2">本次分析考虑了您的偏好：</p>
+                                        <div class="flex flex-wrap gap-2">
+                                            <template x-for="pref in appliedPrefs" :key="pref.id">
+                                                <span class="text-xs px-2 py-1 bg-white/20 rounded-full">
+                                                    当「<span x-text="pref.trigger?.slice(0, 15) + (pref.trigger?.length > 15 ? '...' : '')"></span>」时
+                                                    → <span x-text="pref.my_response?.slice(0, 15) + (pref.my_response?.length > 15 ? '...' : '')"></span>
+                                                </span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ========== 研究概要总结 ========== -->
+                        <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                            <!-- 核心结论头部 -->
+                            <div class="p-5"
+                                 :class="researchResult?.conclusion?.recommendation === '买入' || researchResult?.conclusion?.recommendation === '增持' ? 'bg-gradient-to-r from-green-50 to-green-100' :
+                                         researchResult?.conclusion?.recommendation === '卖出' || researchResult?.conclusion?.recommendation === '减持' ? 'bg-gradient-to-r from-red-50 to-red-100' : 'bg-gradient-to-r from-blue-50 to-blue-100'">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-4">
+                                        <div class="text-center">
+                                            <p class="text-xs text-gray-500 uppercase tracking-wide">AI 建议</p>
+                                            <p class="text-3xl font-bold"
+                                               :class="researchResult?.conclusion?.recommendation === '买入' || researchResult?.conclusion?.recommendation === '增持' ? 'text-green-700' :
+                                                       researchResult?.conclusion?.recommendation === '卖出' || researchResult?.conclusion?.recommendation === '减持' ? 'text-red-700' : 'text-blue-700'"
+                                               x-text="researchResult?.conclusion?.recommendation || '—'"></p>
+                                        </div>
+                                        <div class="h-12 w-px bg-gray-300"></div>
+                                        <div class="text-center">
+                                            <p class="text-xs text-gray-500 uppercase tracking-wide">信心水平</p>
+                                            <p class="text-2xl font-semibold text-gray-800" x-text="researchResult?.conclusion?.confidence || '—'"></p>
+                                        </div>
+                                        <div x-show="researchResult?.conclusion?.position_suggestion" class="h-12 w-px bg-gray-300"></div>
+                                        <div x-show="researchResult?.conclusion?.position_suggestion" class="text-center">
+                                            <p class="text-xs text-gray-500 uppercase tracking-wide">仓位建议</p>
+                                            <p class="text-lg font-medium text-gray-700" x-text="researchResult?.conclusion?.position_suggestion || ''"></p>
+                                        </div>
+                                    </div>
+                                    <div class="text-right max-w-md">
+                                        <p class="text-gray-700 text-sm leading-relaxed" x-text="researchResult?.conclusion?.reasoning || ''"></p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 概要内容区 -->
+                            <div class="p-5 space-y-5">
+                                <!-- 关键发现 -->
+                                <div>
+                                    <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                                        <span class="w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-xs flex items-center justify-center mr-2">1</span>
+                                        关键发现
+                                    </h4>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <template x-for="(finding, i) in (researchResult?.key_findings || []).slice(0, 4)" :key="i">
+                                            <div class="flex items-start space-x-2 p-3 bg-gray-50 rounded-lg">
+                                                <span class="text-purple-500 mt-0.5">▸</span>
+                                                <p class="text-sm text-gray-700" x-text="finding"></p>
+                                            </div>
+                                        </template>
+                                        <template x-if="!researchResult?.key_findings || researchResult?.key_findings.length === 0">
+                                            <div class="flex items-start space-x-2 p-3 bg-gray-50 rounded-lg col-span-2">
+                                                <span class="text-purple-500 mt-0.5">▸</span>
+                                                <p class="text-sm text-gray-700" x-text="researchResult?.conclusion?.key_finding || '详见完整报告'"></p>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- 风险与机会 -->
+                                <div>
+                                    <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                                        <span class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs flex items-center justify-center mr-2">2</span>
+                                        风险与机会
+                                    </h4>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <!-- 风险 -->
+                                        <div class="bg-red-50 border border-red-100 rounded-lg p-4">
+                                            <p class="text-xs font-medium text-red-600 uppercase tracking-wide mb-2">⚠️ 主要风险</p>
+                                            <ul class="space-y-2">
+                                                <template x-for="(risk, i) in (researchResult?.conclusion?.key_risks || []).slice(0, 3)" :key="i">
+                                                    <li class="flex items-start space-x-2 text-sm text-red-800">
+                                                        <span class="text-red-400">•</span>
+                                                        <span x-text="risk"></span>
+                                                    </li>
+                                                </template>
+                                                <template x-if="!researchResult?.conclusion?.key_risks || researchResult?.conclusion?.key_risks.length === 0">
+                                                    <li class="text-sm text-red-700" x-text="assessment?.conclusion?.key_risk || '暂无明显风险'"></li>
+                                                </template>
+                                            </ul>
+                                        </div>
+                                        <!-- 机会/催化剂 -->
+                                        <div class="bg-green-50 border border-green-100 rounded-lg p-4">
+                                            <p class="text-xs font-medium text-green-600 uppercase tracking-wide mb-2">🎯 催化剂/机会</p>
+                                            <ul class="space-y-2">
+                                                <template x-for="(catalyst, i) in (researchResult?.conclusion?.key_catalysts || []).slice(0, 3)" :key="i">
+                                                    <li class="flex items-start space-x-2 text-sm text-green-800">
+                                                        <span class="text-green-400">•</span>
+                                                        <span x-text="catalyst"></span>
+                                                    </li>
+                                                </template>
+                                                <template x-if="!researchResult?.conclusion?.key_catalysts || researchResult?.conclusion?.key_catalysts.length === 0">
+                                                    <li class="text-sm text-green-700" x-text="assessment?.conclusion?.key_opportunity || '暂无明显催化剂'"></li>
+                                                </template>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 情景分析概要 -->
+                                <div x-show="researchResult?.conclusion?.bull_case_probability || researchResult?.conclusion?.base_case_probability">
+                                    <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                                        <span class="w-6 h-6 rounded-full bg-orange-100 text-orange-700 text-xs flex items-center justify-center mr-2">3</span>
+                                        情景分析
+                                    </h4>
+                                    <div class="flex items-center space-x-2">
+                                        <!-- 乐观 -->
+                                        <div class="flex-1 text-center p-3 bg-green-50 rounded-lg">
+                                            <p class="text-xs text-green-600 font-medium">乐观情景</p>
+                                            <p class="text-2xl font-bold text-green-700" x-text="(researchResult?.conclusion?.bull_case_probability || 0) + '%'"></p>
+                                        </div>
+                                        <!-- 基准 -->
+                                        <div class="flex-1 text-center p-3 bg-gray-100 rounded-lg border-2 border-gray-300">
+                                            <p class="text-xs text-gray-600 font-medium">基准情景</p>
+                                            <p class="text-2xl font-bold text-gray-700" x-text="(researchResult?.conclusion?.base_case_probability || 0) + '%'"></p>
+                                        </div>
+                                        <!-- 悲观 -->
+                                        <div class="flex-1 text-center p-3 bg-red-50 rounded-lg">
+                                            <p class="text-xs text-red-600 font-medium">悲观情景</p>
+                                            <p class="text-2xl font-bold text-red-700" x-text="(researchResult?.conclusion?.bear_case_probability || 0) + '%'"></p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 后续跟踪 -->
+                                <div x-show="researchResult?.conclusion?.follow_up_items?.length > 0 || researchResult?.conclusion?.next_research_trigger?.length > 0">
+                                    <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                                        <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs flex items-center justify-center mr-2">4</span>
+                                        后续跟踪
+                                    </h4>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div x-show="researchResult?.conclusion?.follow_up_items?.length > 0" class="p-3 bg-indigo-50 rounded-lg">
+                                            <p class="text-xs font-medium text-indigo-600 mb-2">📋 持续跟踪事项</p>
+                                            <ul class="space-y-1">
+                                                <template x-for="(item, i) in (researchResult?.conclusion?.follow_up_items || []).slice(0, 3)" :key="i">
+                                                    <li class="text-sm text-indigo-800 flex items-start">
+                                                        <span class="text-indigo-400 mr-2">•</span>
+                                                        <span x-text="item"></span>
+                                                    </li>
+                                                </template>
+                                            </ul>
+                                        </div>
+                                        <div x-show="researchResult?.conclusion?.next_research_trigger?.length > 0" class="p-3 bg-yellow-50 rounded-lg">
+                                            <p class="text-xs font-medium text-yellow-600 mb-2">🔔 下次研究触发条件</p>
+                                            <ul class="space-y-1">
+                                                <template x-for="(trigger, i) in (researchResult?.conclusion?.next_research_trigger || []).slice(0, 3)" :key="i">
+                                                    <li class="text-sm text-yellow-800 flex items-start">
+                                                        <span class="text-yellow-400 mr-2">•</span>
+                                                        <span x-text="trigger"></span>
+                                                    </li>
+                                                </template>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 完整报告（可折叠） -->
+                        <div class="bg-white border border-gray-200 rounded-lg">
+                            <div class="p-4 border-b border-gray-200 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                                 @click="reportExpanded = !reportExpanded">
+                                <h3 class="font-medium text-gray-900 flex items-center">
+                                    <span class="mr-2">📄</span>
+                                    完整研究报告
+                                    <span class="ml-2 text-xs text-gray-400">（点击展开查看详细分析）</span>
+                                </h3>
+                                <span class="text-gray-400 transition-transform" :class="reportExpanded ? 'rotate-180' : ''">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                    </svg>
+                                </span>
+                            </div>
+                            <div x-show="reportExpanded" x-collapse class="p-4 max-h-[600px] overflow-y-auto">
+                                <div class="prose prose-sm max-w-none" x-html="marked.parse(researchResult?.full_report || '')"></div>
+                            </div>
+                        </div>
+
+                        <!-- 对话式继续研究 -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <h4 class="font-medium text-blue-900 mb-2">💬 继续深入研究</h4>
+                            <p class="text-sm text-blue-700 mb-3">对研究结果有疑问？想深入某个方向？直接输入你的问题：</p>
+
+                            <!-- 对话历史 -->
+                            <div x-show="conversationHistory.length > 0" class="mb-4 max-h-64 overflow-y-auto space-y-3">
+                                <template x-for="(msg, i) in conversationHistory" :key="i">
+                                    <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                                        <div :class="msg.role === 'user'
+                                            ? 'bg-blue-600 text-white rounded-2xl rounded-tr-none max-w-[85%]'
+                                            : 'bg-white border border-gray-200 text-gray-900 rounded-2xl rounded-tl-none max-w-[85%]'"
+                                            class="px-4 py-3">
+                                            <div class="prose prose-sm max-w-none"
+                                                 :class="msg.role === 'user' ? 'text-white' : ''"
+                                                 x-html="marked.parse(msg.content)"></div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- 输入框 -->
+                            <div class="flex space-x-2">
+                                <textarea x-model="followUpQuestion"
+                                    class="flex-1 p-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white resize-none"
+                                    placeholder="例如：帮我再分析一下竞争对手的情况、这个风险点能否量化...（支持多行，Ctrl+Enter 发送）"
+                                    rows="2"
+                                    @keydown.ctrl.enter="askFollowUp()"
+                                    @keydown.meta.enter="askFollowUp()"
+                                    :disabled="loading"></textarea>
+                                <button @click="askFollowUp()"
+                                    :disabled="!followUpQuestion.trim() || loading"
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 self-end">
+                                    <span x-show="!loading">发送</span>
+                                    <span x-show="loading" class="flex items-center">
+                                        <svg class="animate-spin h-4 w-4 mr-1" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        思考中
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="flex space-x-3">
+                            <button @click="currentStep = 2" class="flex-1 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">
+                                返回查看计划
+                            </button>
+                            <button @click="currentStep = 4" class="flex-1 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                                研究完成，提供反馈
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Step 5: 用户反馈 -->
+                    <div x-show="!loading && currentStep === 4" class="space-y-6">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <h3 class="font-medium text-blue-900 mb-2">📝 请提供你的反馈</h3>
+                            <p class="text-sm text-blue-700">你的反馈将作为下次研究的上下文参考</p>
+                        </div>
+
+                        <!-- 研究价值评估 -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">1. 这个研究是否有价值？方向对不对？</label>
+                            <textarea x-model="feedback.feedback_on_research"
+                                class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                rows="2"
+                                placeholder="例如：研究方向正确，但缺少对竞争对手的分析..."></textarea>
+                        </div>
+
+                        <!-- 是否继续研究 -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">2. 是否需要继续深入研究其他方向？</label>
+                            <div class="flex space-x-4">
+                                <label class="flex items-center space-x-2">
+                                    <input type="radio" x-model="feedback.needs_further_research" value="no" class="text-blue-600">
+                                    <span>不需要，研究已充分</span>
+                                </label>
+                                <label class="flex items-center space-x-2">
+                                    <input type="radio" x-model="feedback.needs_further_research" value="yes" class="text-blue-600">
+                                    <span>需要，有其他方向</span>
+                                </label>
+                            </div>
+                            <div x-show="feedback.needs_further_research === 'yes'" class="mt-2">
+                                <textarea x-model="feedback.further_research_direction"
+                                    class="w-full p-3 border border-gray-300 rounded-lg resize-none"
+                                    rows="2"
+                                    placeholder="请描述需要继续研究的方向...（支持多行输入）"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- 投资决策 -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">3. 基于这个研究，你的投资决策是？</label>
+                            <div class="grid grid-cols-5 gap-2">
+                                <button type="button" @click="feedback.final_decision = '买入'"
+                                    :class="feedback.final_decision === '买入' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                    class="py-2 rounded-lg font-medium transition">买入</button>
+                                <button type="button" @click="feedback.final_decision = '增持'"
+                                    :class="feedback.final_decision === '增持' ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                    class="py-2 rounded-lg font-medium transition">增持</button>
+                                <button type="button" @click="feedback.final_decision = '持有'"
+                                    :class="feedback.final_decision === '持有' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                    class="py-2 rounded-lg font-medium transition">持有</button>
+                                <button type="button" @click="feedback.final_decision = '减持'"
+                                    :class="feedback.final_decision === '减持' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                    class="py-2 rounded-lg font-medium transition">减持</button>
+                                <button type="button" @click="feedback.final_decision = '卖出'"
+                                    :class="feedback.final_decision === '卖出' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+                                    class="py-2 rounded-lg font-medium transition">卖出</button>
+                            </div>
+                        </div>
+
+                        <!-- 跟踪指标 -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">4. 后续需要持续跟踪的指标是什么？</label>
+                            <div class="flex space-x-2">
+                                <input type="text" x-model="newMetric"
+                                    class="flex-1 p-3 border border-gray-300 rounded-lg"
+                                    placeholder="输入指标，按回车添加"
+                                    @keyup.enter="addMetric()">
+                                <button @click="addMetric()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">添加</button>
+                            </div>
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                <template x-for="(metric, index) in feedback.tracking_metrics" :key="index">
+                                    <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm flex items-center space-x-1">
+                                        <span x-text="metric"></span>
+                                        <button @click="removeMetric(index)" class="text-blue-500 hover:text-blue-700">×</button>
+                                    </span>
+                                </template>
+                            </div>
+                        </div>
+
+                        <div class="flex space-x-3">
+                            <button @click="currentStep = 3" class="flex-1 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">
+                                返回查看报告
+                            </button>
+                            <button @click="submitFeedback()"
+                                :disabled="!feedback.final_decision"
+                                class="flex-1 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50">
+                                提交反馈并保存
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Step 6: 完成 / 继续研究 -->
+                    <div x-show="!loading && currentStep === 5" class="space-y-6">
+                        <div class="text-center py-8">
+                            <div class="text-6xl mb-4">✅</div>
+                            <h3 class="text-xl font-bold text-gray-900 mb-2">研究已保存</h3>
+                            <p class="text-gray-600">你的反馈已记录，将作为下次研究的参考</p>
+                        </div>
+
+                        <div x-show="feedback.needs_further_research === 'yes'" class="p-4 bg-yellow-50 rounded-lg">
+                            <p class="text-yellow-800">你提到需要继续研究: <strong x-text="feedback.further_research_direction"></strong></p>
+                            <button @click="continueResearch()" class="mt-3 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700">
+                                继续深入研究这个方向
+                            </button>
+                        </div>
+
+                        <div class="flex space-x-3">
+                            <button @click="closeResearchModal(); window.location.reload()" class="flex-1 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+                                完成
+                            </button>
+                            <button @click="startNewResearch()" class="flex-1 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium">
+                                开始新的研究
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function stockDetail() {
+    return {
+        editMode: false,
+        jsonContent: JSON.stringify({{ playbook|tojson|safe if playbook else {} }}, null, 2),
+        expandedHistory: null,
+        stockId: '{{ stock_id }}',
+
+        // 研究相关
+        researchModal: false,
+        currentStep: 0,
+        steps: ['设置参数', '采集环境', '评估计划', '研究结果', '我的反馈', '完成'],
+        stepDescriptions: [
+            '选择时间范围和上传额外资料',
+            '正在采集市场动态...',
+            '查看评估结果和研究计划',
+            '查看完整研究报告',
+            '提供你的反馈和决策',
+            '研究已完成'
+        ],
+        loading: false,
+        loadingText: '',
+        reportExpanded: false,
+        showDimensionDetail: false,
+
+        // 参数
+        days: 7,
+        daysPreset: '7',
+        uploadedFiles: [],
+
+        // 数据
+        news: [],
+        uploadedFilesAnalysis: [],
+        searchMetadata: {},  // 搜索元数据（包含警告）
+        assessment: null,
+        researchResult: null,
+
+        // 计划调整
+        planAdjustment: '',
+        planAdjustmentHistory: [],
+
+        // 对话式继续研究
+        followUpQuestion: '',
+        conversationHistory: [],
+
+        // 反馈
+        feedback: {
+            feedback_on_research: '',
+            needs_further_research: 'no',
+            further_research_direction: '',
+            final_decision: '',
+            tracking_metrics: []
+        },
+        newMetric: '',
+
+        async savePlaybook() {
+            try {
+                const data = JSON.parse(this.jsonContent);
+                const response = await fetch(`/api/stock/${this.stockId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (response.ok) window.location.reload();
+            } catch (e) {
+                alert('JSON 格式错误: ' + e.message);
+            }
+        },
+
+        openResearchModal() {
+            this.researchModal = true;
+            this.currentStep = 0;
+            this.news = [];
+            this.assessment = null;
+            this.researchResult = null;
+            this.showDimensionDetail = false;
+            this.planAdjustment = '';
+            this.planAdjustmentHistory = [];
+            this.followUpQuestion = '';
+            this.conversationHistory = [];
+            this.feedback = {
+                feedback_on_research: '',
+                needs_further_research: 'no',
+                further_research_direction: '',
+                final_decision: '',
+                tracking_metrics: []
+            };
+        },
+
+        closeResearchModal() {
+            this.researchModal = false;
+        },
+
+        handleFileUpload(event) {
+            const files = Array.from(event.target.files);
+            this.uploadedFiles = [...this.uploadedFiles, ...files];
+        },
+
+        removeFile(index) {
+            this.uploadedFiles.splice(index, 1);
+        },
+
+        addMetric() {
+            if (this.newMetric.trim()) {
+                this.feedback.tracking_metrics.push(this.newMetric.trim());
+                this.newMetric = '';
+            }
+        },
+
+        removeMetric(index) {
+            this.feedback.tracking_metrics.splice(index, 1);
+        },
+
+        async collectEnvironment() {
+            this.loading = true;
+            this.loadingText = '正在采集市场动态...';
+            this.currentStep = 1;
+
+            // 使用 FormData 来上传文件
+            const formData = new FormData();
+            formData.append('days', parseInt(this.days));
+
+            // 添加上传的文件
+            for (const file of this.uploadedFiles) {
+                formData.append('files', file);
+            }
+
+            const response = await fetch(`/api/research/${this.stockId}/environment`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            // 保存上传文件的分析结果
+            this.uploadedFilesAnalysis = data.uploaded_files_analysis || [];
+            this.news = data.news || [];
+            this.searchMetadata = data.search_metadata || {};  // 搜索元数据（包含警告）
+            this.loading = false;
+        },
+
+        async assessImpact() {
+            this.loading = true;
+            this.loadingText = '正在进行三维度评估，生成研究计划...';
+
+            const response = await fetch(`/api/research/${this.stockId}/assess`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    news: this.news,
+                    uploaded_files: this.uploadedFilesAnalysis,
+                    time_range: `${this.days}d`
+                })
+            });
+
+            this.assessment = await response.json();
+            this.loading = false;
+            this.currentStep = 2;
+        },
+
+        async adjustPlan() {
+            if (!this.planAdjustment.trim()) return;
+
+            this.loading = true;
+            this.loadingText = '正在根据你的意见调整研究计划...';
+
+            const response = await fetch(`/api/research/${this.stockId}/adjust-plan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    current_plan: this.assessment?.research_plan,
+                    adjustment_request: this.planAdjustment,
+                    news: this.news,
+                    time_range: `${this.days}d`
+                })
+            });
+
+            const result = await response.json();
+
+            // 记录调整历史
+            this.planAdjustmentHistory.push({
+                request: this.planAdjustment,
+                response: result.adjustment_summary || '已调整'
+            });
+
+            // 更新计划
+            if (result.updated_plan) {
+                this.assessment.research_plan = result.updated_plan;
+            }
+
+            this.planAdjustment = '';
+            this.loading = false;
+        },
+
+        async askFollowUp() {
+            if (!this.followUpQuestion.trim()) return;
+
+            const question = this.followUpQuestion;
+            this.followUpQuestion = '';
+            this.conversationHistory.push({ role: 'user', content: question });
+            this.loading = true;
+
+            const response = await fetch(`/api/research/${this.stockId}/follow-up`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    question: question,
+                    research_report: this.researchResult?.full_report,
+                    research_conclusion: this.researchResult?.conclusion,
+                    conversation_history: this.conversationHistory.slice(0, -1),  // 不包含刚添加的问题
+                    news: this.news
+                })
+            });
+
+            const result = await response.json();
+            this.conversationHistory.push({ role: 'assistant', content: result.answer });
+            this.loading = false;
+
+            // 滚动到对话底部
+            this.$nextTick(() => {
+                const container = document.querySelector('.max-h-64.overflow-y-auto');
+                if (container) container.scrollTop = container.scrollHeight;
+            });
+        },
+
+        async executeResearch() {
+            this.loading = true;
+            this.loadingText = '正在执行深度研究，这可能需要 2-3 分钟...';
+            this.currentStep = 3;
+
+            const response = await fetch(`/api/research/${this.stockId}/execute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    research_plan: this.assessment?.research_plan || {},
+                    news: this.news,
+                    time_range: `${this.days}d`,
+                    assessment: this.assessment
+                })
+            });
+
+            this.researchResult = await response.json();
+            this.loading = false;
+        },
+
+        async submitFeedback() {
+            this.loading = true;
+            this.loadingText = '正在保存反馈...';
+
+            // 保存反馈到研究记录（包含对话历史）
+            await fetch(`/api/research/${this.stockId}/feedback`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    feedback: this.feedback,
+                    research_result: this.researchResult,
+                    conversation_history: this.conversationHistory
+                })
+            });
+
+            this.loading = false;
+            this.currentStep = 5;
+        },
+
+        continueResearch() {
+            // 使用用户指定的方向继续研究
+            // 保留当前的研究结果和对话历史作为上下文
+            // 回到评估计划阶段，但保留 news 数据
+            this.currentStep = 1;  // 回到环境采集后的状态
+            this.assessment = null;  // 清空评估，重新评估
+            this.planAdjustmentHistory = [];
+            // 不清空 conversationHistory，保留对话上下文
+        },
+
+        startNewResearch() {
+            this.openResearchModal();
+        }
+    }
+}
+</script>
 {% endblock %}

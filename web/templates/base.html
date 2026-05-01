@@ -1,83 +1,81 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title or "Investment Assistant" }}</title>
-  <style>
-    :root {
-      --bg: #f5f1e8;
-      --card: #fffaf1;
-      --line: #d8cdb8;
-      --text: #2f2419;
-      --muted: #6b5a46;
-      --accent: #1f6f5f;
-      --accent-2: #d5853f;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Georgia, "Noto Serif SC", serif;
-      color: var(--text);
-      background:
-        radial-gradient(circle at top left, rgba(213,133,63,.16), transparent 28%),
-        radial-gradient(circle at top right, rgba(31,111,95,.12), transparent 24%),
-        var(--bg);
-    }
-    header, main { max-width: 1100px; margin: 0 auto; padding: 20px; }
-    header { display: flex; gap: 16px; justify-content: space-between; align-items: center; }
-    nav { display: flex; flex-wrap: wrap; gap: 10px; }
-    nav a {
-      color: var(--text);
-      text-decoration: none;
-      padding: 8px 12px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(255,255,255,.5);
-    }
-    .hero, .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 22px;
-      padding: 20px;
-      box-shadow: 0 16px 50px rgba(47,36,25,.06);
-    }
-    .grid { display: grid; gap: 16px; }
-    .grid.two { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-    .muted { color: var(--muted); }
-    h1, h2, h3 { margin-top: 0; }
-    code, pre { font-family: Consolas, monospace; }
-    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--line); }
-    .pill {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: rgba(31,111,95,.12);
-      color: var(--accent);
-      font-size: 12px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}投资研究助手{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+        .prose table { width: 100%; border-collapse: collapse; margin: 1em 0; }
+        .prose th, .prose td { border: 1px solid #e5e7eb; padding: 0.5em; text-align: left; }
+        .prose th { background: #f9fafb; font-weight: 600; }
+        .prose h1, .prose h2, .prose h3 { margin-top: 1.5em; margin-bottom: 0.5em; }
+        .prose ul, .prose ol { margin: 0.5em 0; padding-left: 1.5em; }
+        .prose li { margin: 0.25em 0; }
+        .prose pre { background: #1f2937; color: #e5e7eb; padding: 1em; border-radius: 0.5em; overflow-x: auto; }
+        .prose code { background: #f3f4f6; padding: 0.2em 0.4em; border-radius: 0.25em; font-size: 0.9em; }
+        .prose pre code { background: transparent; padding: 0; }
+    </style>
 </head>
-<body>
-  <header>
-    <div>
-      <div class="muted">Investment Assistant</div>
-      <strong>Gemini Web Console</strong>
-    </div>
-    <nav>
-      <a href="/">首页</a>
-      <a href="/portfolio">组合</a>
-      <a href="/stocks">股票</a>
-      <a href="/add-stock">新增股票</a>
-      <a href="/research-history">研究历史</a>
-      <a href="/preferences">偏好</a>
-      <a href="/batch-scan">批量扫描</a>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 导航栏 -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="/" class="flex items-center space-x-2">
+                        <span class="text-2xl">📊</span>
+                        <span class="font-bold text-xl text-gray-900">投资研究助手</span>
+                    </a>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <a href="/" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'index' %}text-blue-600 bg-blue-50{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                        仪表盘
+                    </a>
+                    <a href="/portfolio" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'portfolio' %}text-blue-600 bg-blue-50{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                        总体 Playbook
+                    </a>
+                    <a href="/stocks" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'stocks' %}text-blue-600 bg-blue-50{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                        个股管理
+                    </a>
+                    <a href="/research-history" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'research_history' %}text-blue-600 bg-blue-50{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                        研究历史
+                    </a>
+                    <a href="/batch-scan" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'batch_scan_page' %}text-blue-600 bg-blue-50{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                        批量扫描
+                    </a>
+                    <a href="/preferences" class="px-3 py-2 rounded-md text-sm font-medium {% if request.endpoint == 'preferences_page' %}text-blue-600 bg-blue-50{% else %}text-gray-600 hover:text-gray-900 hover:bg-gray-50{% endif %}">
+                        投资偏好
+                    </a>
+                    <a href="/add-stock" class="ml-4 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        + 添加股票
+                    </a>
+                    {% if auth_enabled and is_authenticated %}
+                    <a href="/logout" class="px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50">
+                        退出登录
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
     </nav>
-  </header>
-  <main>
-    {% block content %}{% endblock %}
-  </main>
+
+    <!-- 主内容 -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-white border-t border-gray-200 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 py-4 text-center text-sm text-gray-500">
+            投资研究助手 - 本地版 | 数据存储于 ~/.investment-assistant/
+        </div>
+    </footer>
+
+    {% block scripts %}{% endblock %}
 </body>
 </html>
