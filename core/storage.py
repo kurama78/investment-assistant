@@ -12,7 +12,12 @@ class Storage:
     """本地 JSON 文件存储"""
 
     def __init__(self, base_dir: Optional[str] = None):
-        self.base_dir = Path(base_dir or os.path.expanduser("~/.investment-assistant"))
+        resolved_base_dir = (
+            base_dir
+            or os.getenv("INVEST_ASSISTANT_DATA_DIR")
+            or os.path.expanduser("~/.investment-assistant")
+        )
+        self.base_dir = Path(resolved_base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
         # 创建子目录

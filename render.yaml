@@ -2,13 +2,19 @@ services:
   - type: web
     name: investment-assistant
     runtime: docker
-    plan: free
+    plan: starter
     autoDeploy: true
     healthCheckPath: /health
+    disk:
+      name: investment-assistant-data
+      mountPath: /var/data/investment-assistant
+      sizeGB: 1
     envVars:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3-flash-preview
+      - key: INVEST_ASSISTANT_DATA_DIR
+        value: /var/data/investment-assistant
       - key: PORT
         value: 5000
