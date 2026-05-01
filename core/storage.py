@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List, Any
@@ -135,12 +136,42 @@ class Storage:
 
     # ==================== 研究历史 ====================
 
+    def _normalize_research_record(self, record: Dict) -> Dict:
+        """Normalize display-facing research dates to the actual record timestamp."""
+        canonical_date = (record.get("date") or "")[:10]
+        if not canonical_date:
+            return record
+
+        normalized = dict(record)
+
+        research_result = normalized.get("research_result")
+        if isinstance(research_result, dict):
+            normalized_result = dict(research_result)
+            normalized_result["research_date"] = canonical_date
+            normalized["research_result"] = normalized_result
+
+        full_report = normalized.get("full_report")
+        if isinstance(full_report, str) and full_report:
+            normalized["full_report"] = re.sub(
+                r"(\*\*[^*\n]*日期:\*\*\s*)([^\n]+)",
+                rf"\g<1>{canonical_date}",
+                full_report,
+                count=1,
+            )
+
+        return normalized
+
     def get_research_history(self, stock_id: str) -> Dict:
         """获取研究历史"""
         history_path = self._get_stock_dir(stock_id) / "history.json"
         if history_path.exists():
             with open(history_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                history = json.load(f)
+            history["records"] = [
+                self._normalize_research_record(record)
+                for record in history.get("records", [])
+            ]
+            return history
         return {"stock_id": stock_id, "records": []}
 
     def add_research_record(self, stock_id: str, record: Dict):

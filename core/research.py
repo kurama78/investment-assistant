@@ -353,8 +353,10 @@ class ResearchEngine:
             historical_str = "\n".join(hist_items)
 
         # 调用 AI 执行研究
+        current_date = datetime.now().strftime("%Y-%m-%d")
         prompt = DEEP_RESEARCH_PROMPT.format(
             stock_name=stock_name,
+            current_date=current_date,
             trigger_reason=research_plan.get("trigger_reason", ""),
             portfolio_playbook=portfolio_str,
             stock_playbook=stock_playbook_str,
@@ -370,6 +372,8 @@ class ResearchEngine:
 
         # 解析结论
         conclusion = self._extract_conclusion(response)
+        conclusion["research_date"] = current_date
+        response = self._normalize_report_date(response, current_date)
 
         # 构建关键发现列表（用于因果逻辑展示）
         key_findings = []
@@ -389,6 +393,17 @@ class ResearchEngine:
             "search_results": search_results,
             "executed_at": datetime.now().isoformat()
         }
+
+    def _normalize_report_date(self, report: str, current_date: str) -> str:
+        """Keep the visible report date aligned with the actual execution date."""
+        if not report:
+            return report
+        return re.sub(
+            r"(\*\*[^*\n]*日期:\*\*\s*)([^\n]+)",
+            rf"\g<1>{current_date}",
+            report,
+            count=1,
+        )
 
     def _execute_searches(self, research_plan: Dict, playbook: Optional[Dict]) -> str:
         """执行研究计划中的搜索。

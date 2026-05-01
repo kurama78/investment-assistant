@@ -5,9 +5,11 @@ import sys
 import os
 import functools
 import hmac
+import io
+import zipfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, Response, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, Response, session, send_file
 from datetime import datetime
 import json
 import hashlib
@@ -205,6 +207,37 @@ def health():
 
 
 # ==================== 页面路由 ====================
+
+@app.route('/api/admin/export', methods=['GET'])
+@requires_auth
+def api_export_backup():
+    """Download a zip backup of the current data directory."""
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    memory_file = io.BytesIO()
+
+    with zipfile.ZipFile(memory_file, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        file_count = 0
+        for path in storage.base_dir.rglob('*'):
+            if not path.is_file():
+                continue
+            archive.write(path, arcname=str(path.relative_to(storage.base_dir)))
+            file_count += 1
+
+        manifest = {
+            'exported_at': datetime.now().isoformat(),
+            'data_dir': str(storage.base_dir),
+            'file_count': file_count,
+        }
+        archive.writestr('manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2))
+
+    memory_file.seek(0)
+    return send_file(
+        memory_file,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'investment-assistant-backup-{timestamp}.zip',
+    )
+
 
 @app.route('/')
 @requires_auth
