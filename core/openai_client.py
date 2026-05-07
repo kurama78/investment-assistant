@@ -12,10 +12,7 @@ import re
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
-
-from google import genai
-from google.genai import types
+from typing import Any, Dict, List, Optional
 
 
 DEFAULT_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
@@ -46,7 +43,11 @@ class OpenAIClient:
                 "Please set GEMINI_API_KEY or DEEPSEEK_API_KEY in the environment or config."
             )
 
-        self.client = genai.Client(api_key=self.api_key) if self.provider == "gemini" else None
+        self.client = None
+        if self.provider == "gemini":
+            from google import genai
+
+            self.client = genai.Client(api_key=self.api_key)
 
     def _api_key_from_env(self) -> Optional[str]:
         if self.provider == "deepseek":
@@ -57,7 +58,7 @@ class OpenAIClient:
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
-        config: Optional[types.GenerateContentConfig] = None,
+        config: Optional[Any] = None,
     ) -> str:
         if self.provider == "deepseek":
             return self._generate_deepseek(prompt, system_prompt=system_prompt)
@@ -67,8 +68,10 @@ class OpenAIClient:
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
-        config: Optional[types.GenerateContentConfig] = None,
+        config: Optional[Any] = None,
     ) -> str:
+        from google.genai import types
+
         if config is None:
             config = types.GenerateContentConfig(
                 system_instruction=system_prompt,
@@ -148,10 +151,14 @@ class OpenAIClient:
             f"Topic: {query}\n"
             "If no reliable updates are available in this window, say that clearly."
         )
-        config = types.GenerateContentConfig(
-            temperature=0.1,
-            tools=[types.Tool(google_search=types.GoogleSearch())],
-        )
+        config = None
+        if self.provider == "gemini":
+            from google.genai import types
+
+            config = types.GenerateContentConfig(
+                temperature=0.1,
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+            )
         try:
             if self.provider == "deepseek":
                 raise RuntimeError("DeepSeek provider does not support Gemini Google Search grounding.")
@@ -208,10 +215,14 @@ Rules:
 4. Do not include commentary outside JSON.
 """
 
-        grounded_config = types.GenerateContentConfig(
-            temperature=0.1,
-            tools=[types.Tool(google_search=types.GoogleSearch())],
-        )
+        grounded_config = None
+        if self.provider == "gemini":
+            from google.genai import types
+
+            grounded_config = types.GenerateContentConfig(
+                temperature=0.1,
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+            )
 
         warnings: List[str] = []
         try:
