@@ -1,7 +1,7 @@
-"""Gemini client shim.
+"""LLM client shim.
 
 Kept as ``openai_client.py`` so the rest of the upstream code can run
-without changing its imports while we use Gemini on both local and Render.
+without changing its imports while we support multiple hosted LLMs.
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -17,21 +18,52 @@ from google import genai
 from google.genai import types
 
 
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+DEFAULT_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+DEFAULT_DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
+DEFAULT_MODEL = (
+    DEFAULT_DEEPSEEK_MODEL if DEFAULT_PROVIDER == "deepseek" else DEFAULT_GEMINI_MODEL
+)
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 
 
 class OpenAIClient:
-    """Compatibility wrapper around the Gemini API."""
+    """Compatibility wrapper around the configured LLM provider."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = DEFAULT_MODEL):
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
+    ):
+        self.provider = (provider or DEFAULT_PROVIDER).strip().lower()
+        self.model = model or (
+            DEFAULT_DEEPSEEK_MODEL if self.provider == "deepseek" else DEFAULT_GEMINI_MODEL
+        )
+        self.api_key = api_key or self._api_key_from_env()
         if not self.api_key:
-            raise ValueError("Please set GEMINI_API_KEY in the environment or config.")
+            raise ValueError(
+                "Please set GEMINI_API_KEY or DEEPSEEK_API_KEY in the environment or config."
+            )
 
-        self.client = genai.Client(api_key=self.api_key)
-        self.model = model
+        self.client = genai.Client(api_key=self.api_key) if self.provider == "gemini" else None
+
+    def _api_key_from_env(self) -> Optional[str]:
+        if self.provider == "deepseek":
+            return os.getenv("DEEPSEEK_API_KEY")
+        return os.getenv("GEMINI_API_KEY")
 
     def _generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        config: Optional[types.GenerateContentConfig] = None,
+    ) -> str:
+        if self.provider == "deepseek":
+            return self._generate_deepseek(prompt, system_prompt=system_prompt)
+        return self._generate_gemini(prompt, system_prompt=system_prompt, config=config)
+
+    def _generate_gemini(
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
@@ -55,6 +87,38 @@ class OpenAIClient:
             config=config,
         )
         return response.text or ""
+
+    def _generate_deepseek(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.2,
+            "thinking": {"type": "enabled"},
+            "reasoning_effort": "high",
+            "stream": False,
+        }
+        request = urllib.request.Request(
+            f"{DEEPSEEK_BASE_URL.rstrip('/')}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=120) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+
+        choices = response_payload.get("choices", [])
+        if not choices:
+            return ""
+        message = choices[0].get("message", {})
+        return message.get("content") or ""
 
     def chat(self, prompt: str, history: Optional[List[Dict]] = None) -> str:
         if history:
@@ -89,6 +153,8 @@ class OpenAIClient:
             tools=[types.Tool(google_search=types.GoogleSearch())],
         )
         try:
+            if self.provider == "deepseek":
+                raise RuntimeError("DeepSeek provider does not support Gemini Google Search grounding.")
             return self._generate(prompt, config=config)
         except Exception:
             return self._generate(
@@ -149,12 +215,14 @@ Rules:
 
         warnings: List[str] = []
         try:
+            if self.provider == "deepseek":
+                raise RuntimeError("DeepSeek provider does not support Gemini Google Search grounding.")
             text = self._generate(prompt, config=grounded_config)
             source_label = "Source: Gemini Google Search grounding"
         except Exception as exc:
             warnings.append(f"Grounded search failed, fell back to model-only output: {exc}")
             text = self._generate(prompt)
-            source_label = "Source: Gemini model output fallback"
+            source_label = f"Source: {self.provider} model output fallback"
 
         payload = self._extract_json_payload(text)
         if not payload:
@@ -162,7 +230,7 @@ Rules:
                 {
                     "_is_metadata": True,
                     "search_warnings": warnings
-                    + [f"{source_label}; Gemini did not return parseable JSON."],
+                    + [f"{source_label}; model did not return parseable JSON."],
                 }
             ]
 

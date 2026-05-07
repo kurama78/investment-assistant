@@ -10,10 +10,16 @@ services:
       mountPath: /var/data/investment-assistant
       sizeGB: 1
     envVars:
+      - key: LLM_PROVIDER
+        value: gemini
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3-flash-preview
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_MODEL
+        value: deepseek-v4-pro
       - key: INVEST_ASSISTANT_DATA_DIR
         value: /var/data/investment-assistant
       - key: PORT

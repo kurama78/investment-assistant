@@ -19,7 +19,12 @@ from typing import Dict
 from core.storage import Storage
 
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+MODEL = (
+    os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
+    if PROVIDER == "deepseek"
+    else os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+)
 PORT = int(os.getenv("PORT", "5000"))
 SESSION_COOKIE = "investment_assistant_session"
 SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
@@ -73,8 +78,14 @@ def _session_is_valid(cookie_value: str) -> bool:
     return hmac.compare_digest(signature, expected)
 
 
+def llm_generate(prompt: str) -> str:
+    if PROVIDER == "deepseek":
+        return deepseek_generate(prompt)
+    return gemini_generate(prompt)
+
+
 def gemini_generate(prompt: str) -> str:
-    api_key = storage.get_api_key() or os.getenv("GEMINI_API_KEY")
+    api_key = storage.get_api_key("gemini") or os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured.")
 
@@ -97,6 +108,38 @@ def gemini_generate(prompt: str) -> str:
         return ""
     parts = candidates[0].get("content", {}).get("parts", [])
     return "".join(part.get("text", "") for part in parts)
+
+
+def deepseek_generate(prompt: str) -> str:
+    api_key = storage.get_api_key("deepseek") or os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise RuntimeError("DEEPSEEK_API_KEY is not configured.")
+
+    url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/") + "/chat/completions"
+    payload = {
+        "model": MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.2,
+        "thinking": {"type": "enabled"},
+        "reasoning_effort": "high",
+        "stream": False,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+    choices = body.get("choices", [])
+    if not choices:
+        return ""
+    return choices[0].get("message", {}).get("content", "")
 
 
 def render_login_page(error: str = "") -> bytes:
@@ -336,7 +379,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send_html(render_page())
             return
         if self.path == "/health":
-            self._send_json({"ok": True, "model": MODEL, "auth_enabled": auth_enabled()})
+            self._send_json({
+                "ok": True,
+                "provider": PROVIDER,
+                "model": MODEL,
+                "auth_enabled": auth_enabled(),
+            })
             return
         if self.path == "/api/portfolio":
             if not self._require_auth():
@@ -400,8 +448,13 @@ class Handler(BaseHTTPRequestHandler):
             data = self._read_json()
             prompt = data.get("prompt", "")
             try:
-                answer = gemini_generate(prompt)
-                self._send_json({"success": True, "answer": answer, "model": MODEL})
+                answer = llm_generate(prompt)
+                self._send_json({
+                    "success": True,
+                    "answer": answer,
+                    "provider": PROVIDER,
+                    "model": MODEL,
+                })
             except urllib.error.HTTPError as exc:
                 self._send_json(
                     {"success": False, "error": exc.read().decode("utf-8", errors="ignore")},
@@ -427,6 +480,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"Investment Assistant running on http://127.0.0.1:{PORT}")
+    print(f"Provider: {PROVIDER}")
     print(f"Model: {MODEL}")
     print(f"Authentication enabled: {auth_enabled()}")
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

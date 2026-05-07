@@ -100,7 +100,8 @@ PUBLIC_ENDPOINTS = {
 def get_client():
     global client, interview_manager, env_collector, research_engine, preference_learner
     if client is None:
-        api_key = storage.get_api_key()
+        provider = os.getenv('LLM_PROVIDER', 'gemini').strip().lower()
+        api_key = storage.get_api_key(provider)
         if api_key:
             client = OpenAIClient(api_key)
             interview_manager = InterviewManager(client, storage)
@@ -199,9 +200,16 @@ def logout():
 
 @app.route('/health')
 def health():
+    provider = os.getenv('LLM_PROVIDER', 'gemini').strip().lower()
+    model = (
+        os.getenv('DEEPSEEK_MODEL', 'deepseek-v4-pro')
+        if provider == 'deepseek'
+        else os.getenv('GEMINI_MODEL', 'gemini-3-flash-preview')
+    )
     return jsonify({
         'ok': True,
-        'model': os.getenv('GEMINI_MODEL', 'gemini-3-flash-preview'),
+        'provider': provider,
+        'model': model,
         'auth_enabled': get_auth_config()['enabled'],
     })
 

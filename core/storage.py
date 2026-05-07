@@ -43,9 +43,15 @@ class Storage:
         with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
 
-    def get_api_key(self) -> Optional[str]:
+    def get_api_key(self, provider: Optional[str] = None) -> Optional[str]:
         """获取 API Key（OpenAI 优先，兼容旧版 Gemini 配置）"""
         config = self.get_config()
+        selected_provider = (provider or os.getenv("LLM_PROVIDER", "gemini")).strip().lower()
+        if selected_provider == "deepseek":
+            return (config.get("deepseek_api_key")
+                    or os.getenv("DEEPSEEK_API_KEY")
+                    or config.get("openai_api_key")
+                    or os.getenv("OPENAI_API_KEY"))
         return (config.get("openai_api_key")
                 or os.getenv("OPENAI_API_KEY")
                 or config.get("gemini_api_key")

@@ -23,10 +23,11 @@ class InvestmentAssistant:
         self.storage = Storage()
 
         # 获取 API Key
-        api_key = self.storage.get_api_key()
+        provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+        api_key = self.storage.get_api_key(provider)
         if not api_key:
             self._setup_api_key()
-            api_key = self.storage.get_api_key()
+            api_key = self.storage.get_api_key(provider)
 
         try:
             self.client = OpenAIClient(api_key)

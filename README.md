@@ -79,3 +79,16 @@
 ## 许可证
 
 MIT
+
+## DeepSeek V4 Pro
+
+Set these environment variables to use DeepSeek V4 Pro instead of the default Gemini model:
+
+```bash
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=your_deepseek_api_key
+DEEPSEEK_MODEL=deepseek-v4-pro
+```
+
+For Render, add the same variables under Environment Variables. Keep
+`LLM_PROVIDER=gemini` or leave it unset to continue using the existing Gemini setup.
