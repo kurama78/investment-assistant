@@ -145,23 +145,29 @@ class OpenAIClient:
     def search(self, query: str, time_range_days: int = 7) -> str:
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=max(time_range_days - 1, 0))
+        if self.provider == "deepseek":
+            return self._generate(
+                (
+                    "Summarize only if you are confident. "
+                    f"Focus on public updates from {start_date.isoformat()} to "
+                    f"{end_date.isoformat()} for: {query}. "
+                    "If you are not certain, explicitly say you are not certain."
+                )
+            )
+
         prompt = (
             "Use Google Search grounding to summarize the most important public updates "
             f"from {start_date.isoformat()} to {end_date.isoformat()}.\n"
             f"Topic: {query}\n"
             "If no reliable updates are available in this window, say that clearly."
         )
-        config = None
-        if self.provider == "gemini":
-            from google.genai import types
+        from google.genai import types
 
-            config = types.GenerateContentConfig(
-                temperature=0.1,
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-            )
+        config = types.GenerateContentConfig(
+            temperature=0.1,
+            tools=[types.Tool(google_search=types.GoogleSearch())],
+        )
         try:
-            if self.provider == "deepseek":
-                raise RuntimeError("DeepSeek provider does not support Gemini Google Search grounding.")
             return self._generate(prompt, config=config)
         except Exception:
             return self._generate(
@@ -201,7 +207,7 @@ Return JSON only in this exact shape:
   ]
 }}
 
-Use Google Search grounding and only include items that happened or were published from
+Use available model knowledge and only include items that happened or were published from
 {start_date.isoformat()} to {end_date.isoformat()} inclusive.
 
 Target company: {stock_name}
@@ -215,7 +221,42 @@ Rules:
 4. Do not include commentary outside JSON.
 """
 
-        grounded_config = None
+        if self.provider == "deepseek":
+            text = self._generate(prompt)
+            payload = self._extract_json_payload(text)
+            if not payload:
+                return [
+                    {
+                        "_is_metadata": True,
+                        "total_dimensions": 1,
+                        "successful_dimensions": 0,
+                        "failed_dimensions": ["model_json"],
+                        "search_warnings": [
+                            "DeepSeek model output did not return parseable JSON."
+                        ],
+                    }
+                ]
+
+            filtered_news = self._filter_news_items(
+                payload.get("news", []),
+                start_date=start_date,
+                end_date=end_date,
+            )
+            warnings: List[str] = []
+            if len(filtered_news) < len(payload.get("news", [])):
+                warnings.append("Dropped items outside the requested date range or with invalid dates.")
+            return [
+                {
+                    "_is_metadata": True,
+                    "total_dimensions": 1,
+                    "successful_dimensions": 1,
+                    "failed_dimensions": [],
+                    "search_warnings": warnings,
+                    "source_label": "Source: DeepSeek model output",
+                },
+                *filtered_news,
+            ]
+
         if self.provider == "gemini":
             from google.genai import types
 
@@ -226,8 +267,6 @@ Rules:
 
         warnings: List[str] = []
         try:
-            if self.provider == "deepseek":
-                raise RuntimeError("DeepSeek provider does not support Gemini Google Search grounding.")
             text = self._generate(prompt, config=grounded_config)
             source_label = "Source: Gemini Google Search grounding"
         except Exception as exc:
@@ -240,6 +279,9 @@ Rules:
             return [
                 {
                     "_is_metadata": True,
+                    "total_dimensions": 1,
+                    "successful_dimensions": 0,
+                    "failed_dimensions": ["model_json"],
                     "search_warnings": warnings
                     + [f"{source_label}; model did not return parseable JSON."],
                 }
@@ -257,6 +299,9 @@ Rules:
         return [
             {
                 "_is_metadata": True,
+                "total_dimensions": 1,
+                "successful_dimensions": 1,
+                "failed_dimensions": [],
                 "search_warnings": [source_label, *warnings],
             },
             *filtered_news,
