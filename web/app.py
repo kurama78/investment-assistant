@@ -10,6 +10,7 @@ import zipfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, Response, session, send_file
+from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime
 import json
 import hashlib
@@ -22,6 +23,7 @@ from core.research import ResearchEngine
 from core.preference_learner import PreferenceLearner
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.secret_key = os.getenv(
     "FLASK_SECRET_KEY",
     os.getenv("AUTH_SESSION_SECRET", "investment-assistant-local-dev"),
@@ -100,15 +102,37 @@ PUBLIC_ENDPOINTS = {
 def get_client():
     global client, interview_manager, env_collector, research_engine, preference_learner
     if client is None:
-        provider = os.getenv('LLM_PROVIDER', 'gemini').strip().lower()
+        provider = storage.get_llm_provider()
+        model = storage.get_llm_model(provider)
         api_key = storage.get_api_key(provider)
         if api_key:
-            client = OpenAIClient(api_key)
+            client = OpenAIClient(api_key, provider=provider, model=model)
             interview_manager = InterviewManager(client, storage)
             env_collector = EnvironmentCollector(client, storage)
             research_engine = ResearchEngine(client, storage)
             preference_learner = PreferenceLearner(client, storage)
     return client
+
+
+def reset_client():
+    global client, interview_manager, env_collector, research_engine, preference_learner
+    client = None
+    interview_manager = None
+    env_collector = None
+    research_engine = None
+    preference_learner = None
+
+
+def is_secure_transport():
+    if request.is_secure:
+        return True
+    if request.headers.get('X-Forwarded-Proto', '').split(',')[0].strip() == 'https':
+        return True
+    return request.host.startswith(('127.0.0.1', 'localhost'))
+
+
+def is_local_request():
+    return request.host.startswith(('127.0.0.1', 'localhost'))
 
 
 @app.context_processor
@@ -200,18 +224,49 @@ def logout():
 
 @app.route('/health')
 def health():
-    provider = os.getenv('LLM_PROVIDER', 'gemini').strip().lower()
-    model = (
-        os.getenv('DEEPSEEK_MODEL', 'deepseek-v4-pro')
-        if provider == 'deepseek'
-        else os.getenv('GEMINI_MODEL', 'gemini-3-flash-preview')
-    )
+    provider = storage.get_llm_provider()
     return jsonify({
         'ok': True,
         'provider': provider,
-        'model': model,
+        'model': storage.get_llm_model(provider),
         'auth_enabled': get_auth_config()['enabled'],
     })
+
+
+@app.route('/api/llm/config', methods=['GET'])
+@requires_auth
+def api_get_llm_config():
+    return jsonify(storage.get_llm_status())
+
+
+@app.route('/api/llm/config', methods=['POST'])
+@requires_auth
+def api_save_llm_config():
+    data = request.json or {}
+    if not get_auth_config().get('enabled', False) and not is_local_request():
+        return jsonify({
+            'success': False,
+            'error': 'Enable authentication before updating LLM settings on a public host.',
+        }), 403
+
+    api_key = (data.get('api_key') or '').strip()
+    if api_key and not is_secure_transport():
+        return jsonify({
+            'success': False,
+            'error': 'API key updates require HTTPS.',
+        }), 400
+
+    try:
+        status = storage.save_llm_config(
+            data.get('provider', 'gemini'),
+            api_key=api_key or None,
+            model=data.get('model'),
+        )
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+
+    reset_client()
+    return jsonify({'success': True, **status})
 
 
 # ==================== 页面路由 ====================
@@ -326,6 +381,11 @@ def preferences_page():
     prefs = storage.get_user_preferences()
     interactions = storage.get_recent_interactions(limit=20)
     return render_template('preferences.html', preferences=prefs, interactions=interactions)
+
+@app.route('/settings')
+def settings_page():
+    """LLM settings page."""
+    return render_template('settings.html')
 
 @app.route('/batch-scan')
 def batch_scan_page():

@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}LLM Settings - Investment Assistant{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto" x-data="llmSettings()" x-init="load()">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div class="p-5 border-b border-gray-100">
+            <h1 class="text-xl font-semibold text-gray-900">LLM Settings</h1>
+            <p class="mt-1 text-sm text-gray-500">Choose the active model provider and update its API key.</p>
+        </div>
+
+        <form class="p-5 space-y-5" @submit.prevent="save()">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Provider</label>
+                <select x-model="form.provider" @change="syncDefaultModel()"
+                        class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500">
+                    <option value="gemini">Gemini</option>
+                    <option value="deepseek">DeepSeek V4 Pro</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Model ID</label>
+                <input type="text" x-model="form.model"
+                       class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">API key</label>
+                <input type="password" x-model="form.api_key" autocomplete="off"
+                       placeholder="Leave blank to keep the existing key"
+                       class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500">
+                <div class="mt-2 flex gap-2 text-xs">
+                    <span class="px-2 py-1 rounded-full"
+                          :class="status.has_gemini_api_key ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'">
+                        Gemini key
+                    </span>
+                    <span class="px-2 py-1 rounded-full"
+                          :class="status.has_deepseek_api_key ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'">
+                        DeepSeek key
+                    </span>
+                </div>
+            </div>
+
+            <div class="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+                Active:
+                <span class="font-medium" x-text="status.provider || '-'"></span>
+                /
+                <span class="font-medium" x-text="status.model || '-'"></span>
+            </div>
+
+            <template x-if="message">
+                <div class="rounded-lg p-3 text-sm"
+                     :class="messageType === 'error' ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-green-50 text-green-700 border border-green-100'"
+                     x-text="message"></div>
+            </template>
+
+            <div class="flex items-center justify-end gap-3">
+                <button type="button" @click="load()"
+                        class="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Reload
+                </button>
+                <button type="submit" :disabled="saving"
+                        class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
+                    <span x-show="!saving">Save</span>
+                    <span x-show="saving">Saving...</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function llmSettings() {
+    return {
+        saving: false,
+        message: '',
+        messageType: 'success',
+        status: {},
+        form: {
+            provider: 'gemini',
+            model: 'gemini-3-flash-preview',
+            api_key: ''
+        },
+        defaults: {
+            gemini: 'gemini-3-flash-preview',
+            deepseek: 'deepseek-v4-pro'
+        },
+        async load() {
+            this.message = '';
+            const response = await fetch('/api/llm/config');
+            const data = await response.json();
+            this.status = data;
+            this.form.provider = data.provider || 'gemini';
+            this.form.model = data.model || this.defaults[this.form.provider];
+            this.form.api_key = '';
+        },
+        syncDefaultModel() {
+            this.form.model = this.defaults[this.form.provider] || this.form.model;
+        },
+        async save() {
+            this.saving = true;
+            this.message = '';
+            try {
+                const response = await fetch('/api/llm/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.form)
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Save failed');
+                }
+                this.status = data;
+                this.form.api_key = '';
+                this.messageType = 'success';
+                this.message = 'Saved';
+            } catch (error) {
+                this.messageType = 'error';
+                this.message = error.message;
+            } finally {
+                this.saving = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

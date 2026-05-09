@@ -43,10 +43,67 @@ class Storage:
         with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
 
+    def get_llm_provider(self) -> str:
+        """Return the selected LLM provider."""
+        config = self.get_config()
+        provider = (config.get("llm_provider") or os.getenv("LLM_PROVIDER", "gemini")).strip().lower()
+        return provider if provider in {"gemini", "deepseek"} else "gemini"
+
+    def get_llm_model(self, provider: Optional[str] = None) -> str:
+        """Return the selected model for an LLM provider."""
+        selected_provider = (provider or self.get_llm_provider()).strip().lower()
+        config = self.get_config()
+        if selected_provider == "deepseek":
+            return (config.get("deepseek_model")
+                    or os.getenv("DEEPSEEK_MODEL")
+                    or "deepseek-v4-pro")
+        return (config.get("gemini_model")
+                or os.getenv("GEMINI_MODEL")
+                or "gemini-3-flash-preview")
+
+    def get_llm_status(self) -> Dict[str, Any]:
+        """Return non-secret LLM configuration for the UI."""
+        provider = self.get_llm_provider()
+        return {
+            "provider": provider,
+            "model": self.get_llm_model(provider),
+            "has_api_key": bool(self.get_api_key(provider)),
+            "has_gemini_api_key": bool(self.get_api_key("gemini")),
+            "has_deepseek_api_key": bool(self.get_api_key("deepseek")),
+        }
+
+    def save_llm_config(
+        self,
+        provider: str,
+        *,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Save LLM settings and optionally update the provider API key."""
+        selected_provider = provider.strip().lower()
+        if selected_provider not in {"gemini", "deepseek"}:
+            raise ValueError("Unsupported LLM provider.")
+
+        config = self.get_config()
+        config["llm_provider"] = selected_provider
+
+        clean_model = (model or "").strip()
+        if clean_model:
+            config[f"{selected_provider}_model"] = clean_model
+
+        clean_key = (api_key or "").strip()
+        if clean_key:
+            config[f"{selected_provider}_api_key"] = clean_key
+            if selected_provider == "gemini":
+                config["openai_api_key"] = clean_key
+
+        self.save_config(config)
+        return self.get_llm_status()
+
     def get_api_key(self, provider: Optional[str] = None) -> Optional[str]:
         """获取 API Key（OpenAI 优先，兼容旧版 Gemini 配置）"""
         config = self.get_config()
-        selected_provider = (provider or os.getenv("LLM_PROVIDER", "gemini")).strip().lower()
+        selected_provider = (provider or self.get_llm_provider()).strip().lower()
         if selected_provider == "deepseek":
             return (config.get("deepseek_api_key")
                     or os.getenv("DEEPSEEK_API_KEY")

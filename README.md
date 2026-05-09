@@ -92,3 +92,7 @@ DEEPSEEK_MODEL=deepseek-v4-pro
 
 For Render, add the same variables under Environment Variables. Keep
 `LLM_PROVIDER=gemini` or leave it unset to continue using the existing Gemini setup.
+
+The Flask web UI also includes an `LLM` settings page. It can switch between
+Gemini and DeepSeek V4 Pro and update the selected provider API key. API key
+updates are accepted only over HTTPS, except for localhost development.
